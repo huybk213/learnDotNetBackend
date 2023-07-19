@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.4.33403.182
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PokemonReviewApp", "PokemonReviewApp\PokemonReviewApp.csproj", "{3CE3C979-8AC2-4B9B-AB8C-2859D32C2EF0}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "audioConverter", "PokemonReviewApp\audioConverter.csproj", "{3CE3C979-8AC2-4B9B-AB8C-2859D32C2EF0}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

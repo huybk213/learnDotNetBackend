@@ -1,3 +1,6 @@
+using Microsoft.Extensions.Configuration;
+using PokemonReviewApp.Controllers;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -21,5 +24,10 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 
 app.MapControllers();
-
+var AppConfig = new ConfigurationBuilder().AddJsonFile("appsettings.Development.json").Build();
+var NginxPath = AppConfig.GetValue<string>("NginxFolderConfig:path");
+var url = AppConfig.GetValue<string>("NginxFolderConfig:prefixUrl");
+var FFmpegPath = AppConfig.GetValue<string>("FFMPEG:path");
+AudioUrlConverter.SetNginxPath(NginxPath, url);
+AudioUrlConverter.SetFFmpegPath(FFmpegPath);
 app.Run();
