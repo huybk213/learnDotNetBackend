@@ -206,7 +206,7 @@ namespace audioConverter.Services
 
                     // Create ffmpeg process : m3u8
                     string ffmpegCmd = string.Format("-y -i {0} -acodec mp3 {1}",
-                                                    inputUrl, tmp.LocalFolderRecorded + "\\audio.m3u8");
+                                                    inputUrl, tmp.LocalFolderRecorded + "/audio.m3u8");
                     Console.WriteLine("FFMPEG cmd {0}", ffmpegCmd);
 
 
