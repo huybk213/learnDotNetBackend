@@ -9,7 +9,7 @@ namespace audioConverter.Services
 {
     public class AudioUrlConverter
     {
-        public enum DeleteRecordResutl
+        public enum DeleteRecordResult
         {
             InvalidParam,
             UrlNotExist,
@@ -289,9 +289,9 @@ namespace audioConverter.Services
             }
         }
 
-        public static DeleteRecordResutl TerminateRecord(string inputUrl)
+        public static DeleteRecordResult TerminateRecord(string inputUrl)
         {
-            DeleteRecordResutl ret = DeleteRecordResutl.UrlNotExist;
+            DeleteRecordResult ret = DeleteRecordResult.UrlNotExist;
             if (inputUrl != null && inputUrl != String.Empty)
             {
                 //Check if input url already existed in last
@@ -300,14 +300,14 @@ namespace audioConverter.Services
                     if (inputUrl.Equals(ListAudioConverter[i].InputUrl))
                     {
                         var tmp = DoTerminateFfmpegProcessAsyncWithTimeout(ListAudioConverter[i], 0);
-                        ret = DeleteRecordResutl.Ok;
+                        ret = DeleteRecordResult.Ok;
                         break;
                     }
                 }
             }
             else
             {
-                ret = DeleteRecordResutl.InvalidParam;
+                ret = DeleteRecordResult.InvalidParam;
             }
             return ret;
         }

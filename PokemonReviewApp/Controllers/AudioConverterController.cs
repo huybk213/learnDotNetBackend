@@ -27,14 +27,14 @@ namespace PokemonReviewApp.Controllers
         [HttpDelete]
         public IActionResult TerminateStreamByUrl(string url)
         {
-            DeleteRecordResutl ret = AudioUrlConverter.TerminateRecord(url);
+            DeleteRecordResult ret = AudioUrlConverter.TerminateRecord(url);
             switch (ret)
             {
-                case DeleteRecordResutl.Ok:
+                case DeleteRecordResult.Ok:
                     return Ok("Success");
-                case DeleteRecordResutl.InvalidParam:
+                case DeleteRecordResult.InvalidParam:
                     return BadRequest();
-                case DeleteRecordResutl.UrlNotExist:
+                case DeleteRecordResult.UrlNotExist:
                     return Ok("Url not exist");
                 default: return StatusCode(500);
             }
