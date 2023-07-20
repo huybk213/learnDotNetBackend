@@ -11,36 +11,47 @@ using Minio;
 using Minio.DataModel;
 using System.Threading.Tasks;
 using System.IO;
+using Microsoft.AspNetCore.SignalR.Protocol;
+using System.Text;
+using System.IO.Hashing;
 
 namespace PokemonReviewApp.Controllers
 {
     public class AudioUrlConverter : InputAudioConverter
     {
-        public string LocalFolderRecorded;
-        public long RecordTimeoutInSec { set; get; }
+        public string LocalFolderRecorded = String.Empty;
+        public long RecordTimeoutInSec;
         public long StartRecordTime;
-        public string OutputStreamUrl;
-        public string OutputRecordUrl;
-        private static long _recordCounter = 0;
-        static private Thread t_thrMonitorConvertTimeout;
-        static private long s_timer1s = 0;
-        private static object _synchronizationList = new Object();
-        private static List<Process> FfmpegM3U8Process = new List<Process>();
-        private static List<Process> FfmpegMP3Process= new List<Process>();
+        public string OutputStreamUrl = String.Empty;
+        public string OutputRecordUrl = String.Empty;
+        static private Thread t_thrMonitorTimeout;
+        static private long _timer1s = 0;
+        private static object _ensureThreadSafe = new Object();
+        private static List<Process> _ffmpegM3U8Processes = new List<Process>();
+        private static List<Process> _ffmpegMp3Processes = new List<Process>();
+        private static string _nginxPath = String.Empty;
+        private static string _ffmpegPath = String.Empty;
+        private static string _prefixUrl = String.Empty;
         public static List<AudioUrlConverter> ListAudioConverter = new List<AudioUrlConverter>();
-        private static string _nginxPath = "";
-        private static string _ffmpegPath = "";
-        private static string _prefixUrl = "";
+        private const int MAX_TIMEOUT_WAIT_PROCESS_EXIT = 500;   /*ms*/
 
         //Audio timer monitor
         public static long GetTick1s()
         {
-            return s_timer1s;
+            return _timer1s;
         }
 
+        //This function create unique string from a input string
         private static string GetShortPathToSharedNginxFolder(string inputUrl)
         {
-            return inputUrl.GetHashCode().ToString().Replace("-", "");
+            // Use input string to calculate MD5 hash
+            using (System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create())
+            {
+                byte[] inputBytes = System.Text.Encoding.ASCII.GetBytes(inputUrl);
+                byte[] hashBytes = md5.ComputeHash(inputBytes);
+
+                return Convert.ToHexString(hashBytes).ToLower();
+            }
         }
 
         private static string GetFullPathToSharedNginxFolder(string inputUrl)
@@ -54,109 +65,96 @@ namespace PokemonReviewApp.Controllers
             _prefixUrl = prefixUrl;
         }
 
-        public static void SetFFmpegPath(string path)
+        public static void SetFFmpegBinaryPath(string path)
         {
             _ffmpegPath = path;
         }
 
-        public static string MakeRecordUrl()
-        {
-            //var fileRecorded = _nginxPath + "\\" + (_fakeRecordCounter++).ToString();
-            //return fileRecorded;
-            return String.Empty;
-        }
-        public static string ConvertedUrl(string localFileName)
+        public static string GenUrl(string localFileName)
         {
             return _prefixUrl + localFileName;
         }
 
-        static private void timerThread()
+        static private void TimerThread()
         {
             while (true)
             {
-                lock (_synchronizationList)
+                lock (_ensureThreadSafe)
                 {
-                    s_timer1s++;
+                    _timer1s++;
                 }
                 Thread.Sleep(1000);
             }
         }
+        static private void DoTerminateFfmpegProcessAt(int pos)
+        {
+            try
+            {
+                //Close m3u8 audio convert process
+                _ffmpegM3U8Processes[pos].Kill(); /*Never null*/
+                int maxWaitTime = MAX_TIMEOUT_WAIT_PROCESS_EXIT / 50;
+                while (_ffmpegM3U8Processes[pos].HasExited && maxWaitTime > 0)
+                {
+                    Thread.Sleep(50);
+                    maxWaitTime--;
+                }
+                _ffmpegM3U8Processes.RemoveAt(pos);
 
+                //Close mp3 audio convert process
+                if (_ffmpegMp3Processes != null)
+                {
+                    maxWaitTime = MAX_TIMEOUT_WAIT_PROCESS_EXIT / 50;
+                    _ffmpegMp3Processes[pos].Kill();
+                    while (_ffmpegMp3Processes[pos].HasExited && maxWaitTime > 0)
+                    {
+                        Thread.Sleep(50);
+                        maxWaitTime--;
+                    }
+                    _ffmpegMp3Processes.RemoveAt(pos);
+                }
+
+                Console.WriteLine("Closed ffmpeg");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Close subprocess failed {0}", ex.ToString());
+            }
+
+            //Delete audio .*ts trash file, keep .mp3 file
+            var audioDir = new DirectoryInfo(ListAudioConverter[pos].LocalFolderRecorded);
+
+            foreach (var file in audioDir.EnumerateFiles("*.ts"))
+            {
+                try
+                {
+                    file.Delete();
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e.ToString());
+                }
+            }
+            ListAudioConverter.RemoveAt(pos);
+        }
         static private void audioMonitor()
         {
             while (true)
             {
                 //TODO: Add thread safe
-                lock (_synchronizationList)
+                lock (_ensureThreadSafe)
                 {
                     for (var i = 0; i < ListAudioConverter.Count; i++)
                     {
-                        var now = s_timer1s;
+                        var now = _timer1s;
                         var streamCount = now - ListAudioConverter[i].StartRecordTime;
 
-                        Boolean terminateFfmpeg = false;
-                        //checked ffmpeg stderr
-                        if (ListAudioConverter[i].RecordTimeInSec > 0)
-                        {
-                            StreamReader stderr = FfmpegM3U8Process[i].StandardError;
-                            string errMsg = string.Empty;
-                            int peekSize;
-
-                            peekSize = stderr.Peek();
-                            if (peekSize > 0)
-                            {
-                                errMsg += stderr.ReadToEnd();
-                            }
-
-                            if (errMsg != String.Empty 
-                                && (errMsg.Contains("Error opening input") || errMsg.Contains("404 Not Found")))
-                            {
-                                terminateFfmpeg = true;
-                                Console.WriteLine("FFMPEG process error, exit now");
-                            }
-
-                            stderr = FfmpegMP3Process[i].StandardError;
-                            errMsg = string.Empty;
-
-                            peekSize = stderr.Peek();
-                            if (peekSize > 0)
-                            {
-                                errMsg += stderr.ReadToEnd();
-                            }
-
-                            if (errMsg != String.Empty
-                                && (errMsg.Contains("Error opening input") || errMsg.Contains("404 Not Found")))
-                            {
-                                terminateFfmpeg = true;
-                                Console.WriteLine("FFMPEG process error, exit now");
-                            }
-                        }
-
-                        if ((streamCount >= ListAudioConverter[i].RecordTimeInSec) || terminateFfmpeg)
+                        if ((streamCount >= ListAudioConverter[i].RecordTimeInSec))
                         {
                             Console.WriteLine("Record {0} over, stream time {1}:{2}", 
                                             ListAudioConverter[i].InputUrl,
                                             streamCount,
                                             ListAudioConverter[i].RecordTimeInSec);
-                            //TODO close ffmpeg process
-                            try
-                            {
-                                FfmpegM3U8Process[i].Kill();
-                                FfmpegM3U8Process.RemoveAt(i);
-                                FfmpegMP3Process[i].Kill();
-                                FfmpegMP3Process.RemoveAt(i);
-                                Console.WriteLine("Closed");
-                            }
-                            catch (Exception ex)
-                            {
-                                Console.WriteLine("Close subprocess failed {0}", ex.ToString());
-                            }
-
-                            //Delete folder
-                            Console.WriteLine("Delete folder {0}", ListAudioConverter[i].LocalFolderRecorded);
-                            Task.Factory.StartNew(path => Directory.Delete((string)path, true), ListAudioConverter[i].LocalFolderRecorded);
-
-                            ListAudioConverter.RemoveAt(i);
+                            DoTerminateFfmpegProcessAt(i);
                             break;
                         }
                     }
@@ -165,39 +163,37 @@ namespace PokemonReviewApp.Controllers
             }
         }
 
-        public static void CreateAudioConverterThread()
+        public static void StartAudioConverterThread()
         {
-            if (AudioUrlConverter.t_thrMonitorConvertTimeout == null)  /*Only create 1 time*/
+            if (AudioUrlConverter.t_thrMonitorTimeout == null)  /* Only create 1 time */
             {
                 Console.WriteLine("Create audio converter thread");
-                Thread timer = new Thread(new ThreadStart(AudioUrlConverter.timerThread));
+                Thread timer = new Thread(new ThreadStart(AudioUrlConverter.TimerThread));
                 timer.IsBackground = true;
                 timer.Start();
 
-                t_thrMonitorConvertTimeout = new Thread(new ThreadStart(AudioUrlConverter.audioMonitor));
-                t_thrMonitorConvertTimeout.IsBackground = true;
-                t_thrMonitorConvertTimeout.Start();
+                t_thrMonitorTimeout = new Thread(new ThreadStart(AudioUrlConverter.audioMonitor));
+                t_thrMonitorTimeout.IsBackground = true;
+                t_thrMonitorTimeout.Start();
             }
         }
 
-        public static List<string> getAllRecordUrl()
+        public static List<string> GetAllRecordUrl()
         {
-            List<string> record = new List<string>();
-            lock (_synchronizationList)
+            List<string> records = new List<string>();
+            lock (_ensureThreadSafe)
             {
                 for (var i = 0; i < ListAudioConverter.Count; i++)
                 {
-                    record.Add(ListAudioConverter[i].OutputRecordUrl);
+                    records.Add(ListAudioConverter[i].OutputRecordUrl);
                 }
             }
-            return record;
+            return records;
         }
 
-        public static AudioUrlConverter InsertRecord(string inputUrl, bool needRecordToMp3, long recordTimeInSec)
+        public static AudioUrlConverter InsertRecord(string inputUrl, bool needRecordToFile, long recordTimeInSec)
         {
-            List<string> record = new List<string>();
-
-            lock (_synchronizationList)
+            lock (_ensureThreadSafe)
             {
                 int index = -1;
                 AudioUrlConverter tmp = new AudioUrlConverter();
@@ -219,7 +215,7 @@ namespace PokemonReviewApp.Controllers
                     tmp.RecordTimeInSec = recordTimeInSec;
                     tmp.StartRecordTime = AudioUrlConverter.GetTick1s();
                     tmp.LocalFolderRecorded = GetFullPathToSharedNginxFolder(inputUrl);
-                    tmp.OutputStreamUrl = AudioUrlConverter.ConvertedUrl(GetShortPathToSharedNginxFolder(inputUrl) + "/info.m3u8");
+                    tmp.OutputStreamUrl = AudioUrlConverter.GenUrl(GetShortPathToSharedNginxFolder(inputUrl) + "/audio.m3u8");
 
                     ListAudioConverter.Add(tmp);
 
@@ -228,45 +224,63 @@ namespace PokemonReviewApp.Controllers
                     System.IO.Directory.CreateDirectory(tmp.LocalFolderRecorded);
 
                     // Create ffmpeg process : m3u8
-                    string ffmpegCmd = string.Format("-i {0} -acodec mp3 {1}", 
-                                                    inputUrl, tmp.LocalFolderRecorded + "\\info.m3u8");
+                    string ffmpegCmd = string.Format("-y -i {0} -acodec mp3 {1}", 
+                                                    inputUrl, tmp.LocalFolderRecorded + "\\audio.m3u8");
                     Console.WriteLine("FFMPEG cmd {0}", ffmpegCmd);
+
+                    
                     var m3u8ProcessInfo = new ProcessStartInfo(_ffmpegPath, ffmpegCmd)
                     {
-                        UseShellExecute = false,
+                        UseShellExecute = true,
                         CreateNoWindow = true,
                         RedirectStandardOutput = false,
-                        RedirectStandardError = true
+                        RedirectStandardError = false
                     };
 
                     try
                     {
-
-                        FfmpegM3U8Process.Add(System.Diagnostics.Process.Start(m3u8ProcessInfo));
+                        var newProcess = System.Diagnostics.Process.Start(m3u8ProcessInfo);
+                        if (newProcess != null)
+                        {
+                            _ffmpegM3U8Processes.Add(newProcess);
+                        }
+                        else
+                        {
+                            Console.WriteLine("Create new process failed");
+                            tmp.OutputStreamUrl = String.Empty;
+                        }
                     }
                     catch (Exception ex)
                     {
                         Console.WriteLine("FFMPEG process failed {0}", ex.Message);
                     }
 
-                    if (needRecordToMp3)
+                    if (needRecordToFile)
                     {
                         //mp3
-                        ffmpegCmd = string.Format("-i {0} -acodec libmp3lame -b:a 128k {1}",
+                        //Sample ffmpeg -y -i http://stream.bytech.vn:3000/860262051441926 -acodec libmp3lame  -flush_packets 1 1783043925\info.mp3
+                        ffmpegCmd = string.Format("-y -i {0} -acodec libmp3lame -flush_packets 1 {1}",
                                                        inputUrl, tmp.LocalFolderRecorded + "\\info.mp3");
                         Console.WriteLine("FFMPEG cmd {0}", ffmpegCmd);
                         var mp3ProcessInfo = new ProcessStartInfo(_ffmpegPath, ffmpegCmd)
                         {
-                            UseShellExecute = false,
+                            UseShellExecute = true,
                             CreateNoWindow = true,
                             RedirectStandardOutput = false,
-                            RedirectStandardError = true
+                            RedirectStandardError = false
                         };
 
                         try
                         {
-
-                            FfmpegMP3Process.Add(System.Diagnostics.Process.Start(mp3ProcessInfo));
+                            var newProcess = System.Diagnostics.Process.Start(mp3ProcessInfo);
+                            if (newProcess != null)
+                            {
+                                _ffmpegMp3Processes.Add(newProcess);
+                            }
+                            else
+                            {
+                                Console.WriteLine("Create new process failed");
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -278,7 +292,7 @@ namespace PokemonReviewApp.Controllers
                     {
                         tmp.OutputRecordUrl = "";
                     }
-                    AudioUrlConverter.CreateAudioConverterThread();
+                    AudioUrlConverter.StartAudioConverterThread();
                 }
                 else /*Url existed, update new data */
                 {
@@ -288,17 +302,16 @@ namespace PokemonReviewApp.Controllers
             }
         }
 
-        public static void terminateRecord(string inputUrl)
+        public static void TerminateRecord(string inputUrl)
         {
-            lock (_synchronizationList)
+            lock (_ensureThreadSafe)
             {
                 //Check if input url already existed in last
                 for (var i = 0; i < ListAudioConverter.Count; i++)
                 {
                     if (inputUrl.Equals(ListAudioConverter[i].InputUrl))
                     {
-                        //TODO terminate ffmpeg process
-                        ListAudioConverter.RemoveAt(i);
+                        DoTerminateFfmpegProcessAt(i);
                         break;
                     }
                 }
@@ -315,14 +328,23 @@ namespace PokemonReviewApp.Controllers
         [HttpGet]
         public IActionResult GetAllInputUrl()
         {
-            return Ok(AudioUrlConverter.getAllRecordUrl());
+            return Ok(AudioUrlConverter.GetAllRecordUrl());
         }
 
         [HttpPost] 
         public IActionResult ConvertUrlToM3U8(InputAudioConverter url)
         {
-            //TODO: Verify input
+            if (url.InputUrl == null || url.InputUrl == String.Empty || url.RecordTimeInSec <= 0)
+            {
+                return BadRequest();
+            }
+
             AudioUrlConverter answer = AudioUrlConverter.InsertRecord(url.InputUrl, url.RecordToMp3, url.RecordTimeInSec);
+            if (answer.OutputStreamUrl == String.Empty)
+            {
+                return StatusCode(500);
+            }
+
             return Ok(new
             {
                 Sucess =  true, 

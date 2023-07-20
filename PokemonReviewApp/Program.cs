@@ -29,5 +29,5 @@ var NginxPath = AppConfig.GetValue<string>("NginxFolderConfig:path");
 var url = AppConfig.GetValue<string>("NginxFolderConfig:prefixUrl");
 var FFmpegPath = AppConfig.GetValue<string>("FFMPEG:path");
 AudioUrlConverter.SetNginxPath(NginxPath, url);
-AudioUrlConverter.SetFFmpegPath(FFmpegPath);
+AudioUrlConverter.SetFFmpegBinaryPath(FFmpegPath);
 app.Run();
