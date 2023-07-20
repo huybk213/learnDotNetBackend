@@ -1,4 +1,4 @@
-﻿namespace PokemonReviewApp.Models
+﻿namespace AudioApp.Models
 {
     public class InputAudioConverter
     {

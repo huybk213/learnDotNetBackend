@@ -1,4 +1,4 @@
-﻿using PokemonReviewApp.Models;
+﻿using AudioApp.Models;
 using System;
 using System.Diagnostics;
 using System.Text.Json;
@@ -19,7 +19,7 @@ namespace audioConverter.Services
         public long RecordTimeoutInSec;
         public string OutputStreamUrl = String.Empty;
         public string OutputRecordUrl = String.Empty;
-        public string InputUrl;
+        public string InputUrl = String.Empty;
 
         private static object _ensureThreadSafe = new Object();
         private static string _nginxPath = String.Empty;

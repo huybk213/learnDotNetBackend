@@ -1,24 +1,21 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using PokemonReviewApp.Controllers;
-using PokemonReviewApp.Models;
+using AudioApp.Controllers;
+using AudioApp.Models;
 using System;
 using System.Diagnostics;
 using System.Reflection;
 using System.Threading;
 using System.Timers;
-using Minio;
-using Minio.DataModel;
 using System.Threading.Tasks;
 using System.IO;
 using Microsoft.AspNetCore.SignalR.Protocol;
 using System.Text;
-using System.IO.Hashing;
 using audioConverter;
 using audioConverter.Services;
 using static audioConverter.Services.AudioUrlConverter;
 
-namespace PokemonReviewApp.Controllers
+namespace AudioApp.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
