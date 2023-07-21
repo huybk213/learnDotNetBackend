@@ -22,9 +22,20 @@ namespace AudioApp.Controllers
     public class AudioConverterController : ControllerBase
     {
         [HttpDelete]
-        public IActionResult TerminateStreamByUrl(string url)
+        public IActionResult TerminateStreamByUrl(string url, bool keepStream)
         {
-            DeleteRecordResult ret = AudioUrlConverter.TerminateRecord(url);
+            DeleteRecordResult ret;
+
+            if (url != null && url != String.Empty)
+            {
+                Console.WriteLine("Terminate record = {0}", keepStream);
+                ret = AudioUrlConverter.TerminateRecord(url, keepStream);
+            }
+            else
+            {
+                ret = DeleteRecordResult.InvalidParam;
+            }
+
             switch (ret)
             {
                 case DeleteRecordResult.Ok:
@@ -56,6 +67,17 @@ namespace AudioApp.Controllers
                 Sucess =  true, 
                 Record = answer.OutputRecordUrl,
                 Stream = answer.OutputStreamUrl,
+            });
+        }
+
+        
+        [HttpGet] 
+        public IActionResult GetAllStreamUrl()
+        {
+            var url = AudioUrlConverter.GetAllRecordUrl();
+            return Ok(new
+            {
+                url
             });
         }
     }

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Threading;
 using System.Timers;
+using Newtonsoft.Json.Linq; 
 
 namespace audioConverter.Services
 {
@@ -14,6 +15,12 @@ namespace audioConverter.Services
             InvalidParam,
             UrlNotExist,
             Ok
+        }
+
+        private enum FfmpegFileOutput
+        {
+            M3u8,
+            Mp3,
         }
         public string LocalFolderRecorded = String.Empty;
         public long RecordTimeoutInSec;
@@ -28,6 +35,11 @@ namespace audioConverter.Services
         public static List<AudioUrlConverter> ListAudioConverter = new List<AudioUrlConverter>();
         private List<Process> ConvertProcesses = new List<Process>();
         private const int MAX_TIMEOUT_WAIT_PROCESS_EXIT = 500;   /*ms*/
+        private const int MAX_NUMBER_OF_TS_FILE_KEEP_IN_DISK = 12;
+        private const string M3U8_FILE_NAME = "/audio.m3u8";
+        private const string MP3_FILE_NAME = "/audio.mp3";
+        private const bool _autoRestartStream = false;
+
         public static async Task SupperLongDelay(long delayInSec)
         {
             delayInSec *= 1000; /*Sec to mSec*/
@@ -61,11 +73,13 @@ namespace audioConverter.Services
         {
             _nginxPath = path;
             _prefixUrl = prefixUrl;
+            Console.WriteLine("Nginx = {0}, url = {1}", _nginxPath, _prefixUrl);
         }
 
         public static void SetFFmpegBinaryPath(string path)
         {
             _ffmpegPath = path;
+            Console.WriteLine("FFmpegPath = {0}", _ffmpegPath);
         }
 
         public static string GenUrl(string localFileName)
@@ -108,7 +122,20 @@ namespace audioConverter.Services
         {
             var audioDir = new DirectoryInfo(parentFolder);
 
-            foreach (var file in audioDir.EnumerateFiles("*.ts"))
+            // foreach (var file in audioDir.EnumerateFiles("*.ts"))
+            // {
+            //     try
+            //     {
+            //         await Task.Factory.StartNew(() => file.Delete());
+            //     }
+            //     catch (Exception e)
+            //     {
+            //         Console.WriteLine(e.ToString());
+            //     }
+            // }
+            var masks = new[] { "*.ts", "*.m3u8" };
+            var files = masks.SelectMany(audioDir.EnumerateFiles);
+            foreach (var file in files)
             {
                 try
                 {
@@ -121,27 +148,61 @@ namespace audioConverter.Services
             }
         }
 
-        private static async Task DoTerminateFfmpegProcessAsyncWithTimeout(AudioUrlConverter obj, long timeout)
+       private static async Task DoTerminateOnlyFileRecordProcesses(AudioUrlConverter obj)
         {
             try
             {
-                if (timeout > 0) 
+                if (obj.ConvertProcesses != null && obj.ConvertProcesses.Count == 2)
                 {
-                    await SupperLongDelay(timeout);
+                    Console.WriteLine("Close Mp3 process");
+                    await CloseProcess(obj.ConvertProcesses[1], MAX_TIMEOUT_WAIT_PROCESS_EXIT);
                 }
-                for (int i = 0; i < obj.ConvertProcesses.Count; i++)
-                {
-                    Console.WriteLine("Wait for process {0} close", i);
-                    await CloseProcess(obj.ConvertProcesses[i], MAX_TIMEOUT_WAIT_PROCESS_EXIT);
-                }
-
-                Console.WriteLine("Clean folder {0}", obj.LocalFolderRecorded);
-                await DeleteFileAsync(obj.LocalFolderRecorded);
-                Console.WriteLine("Closed ffmpeg");
+                Console.WriteLine("Closed");
 
                 lock (_ensureThreadSafe)
                 {
-                    ListAudioConverter.Remove(obj);
+                    if (obj.ConvertProcesses != null && obj.ConvertProcesses.Count == 2)
+                    {
+                        obj.ConvertProcesses.RemoveAt(1);       //  0 = process m3u8, 1 = process mp3 record
+                    // ListAudioConverter.Remove(obj);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Close subprocess failed {0}", ex.ToString());
+            }
+        }
+        
+        private static async Task WaitAllFfmpegProcessesUntilTimeout(AudioUrlConverter obj, long recordTimeout, bool keepM3U8Process)
+        {
+            try
+            {
+                if (recordTimeout > 0) 
+                {
+                    Console.WriteLine("Convert process in {0}s", recordTimeout);
+                    await SupperLongDelay(recordTimeout);
+                }
+
+                if (keepM3U8Process)
+                {
+                    DoTerminateOnlyFileRecordProcesses(obj);
+                }
+                else    // Close all
+                {
+                    for (int i = 0; i < obj.ConvertProcesses.Count; i++)
+                    {
+                        Console.WriteLine("Close process {0}", i);
+                        await CloseProcess(obj.ConvertProcesses[i], MAX_TIMEOUT_WAIT_PROCESS_EXIT);
+                    }
+                    Console.WriteLine("Clean folder {0}", obj.LocalFolderRecorded);
+                    await DeleteFileAsync(obj.LocalFolderRecorded);
+                    Console.WriteLine("Done");
+                    
+                    lock (_ensureThreadSafe)
+                    {
+                        ListAudioConverter.Remove(obj);
+                    }
                 }
             }
             catch (Exception ex)
@@ -150,29 +211,44 @@ namespace audioConverter.Services
             }
         }
 
-        private static async Task DoTerminateFfmpegProcessAsync(AudioUrlConverter obj)
-        {
-            var tmp = DoTerminateFfmpegProcessAsyncWithTimeout(obj, obj.RecordTimeoutInSec);
-        }
-
         public static void StartAudioConverterThreadAsync(AudioUrlConverter obj)
         {
-            var dontCare = DoTerminateFfmpegProcessAsync(obj); /* to avoid warning*/
+            var dontCare = WaitAllFfmpegProcessesUntilTimeout(obj, obj.RecordTimeoutInSec, true);
         }
 
-        public static List<string> GetAllRecordUrl()
+        public static JObject GetAllRecordUrl()
         {
-            List<string> records = new List<string>();
+            var json = JObject.Parse("{}");
+
+            // List<string> records = new List<string>();
             lock (_ensureThreadSafe)
             {
-                for (var i = 0; i < ListAudioConverter.Count; i++)
+                foreach (var item in ListAudioConverter)
                 {
-                    records.Add(ListAudioConverter[i].OutputRecordUrl);
+                    json.Add(item.InputUrl, item.OutputRecordUrl);
                 }
             }
-            return records;
+            return json;
         }
 
+        //Sample ffmpeg -y -i http://stream.bytech.vn:3000/860262051441926 -acodec libmp3lame  -flush_packets 1 1783043925/info.mp3
+        private static string BuildFffmpegStreamCmd(string inputUrl, string destinationFolder, FfmpegFileOutput type)
+        {
+            string ffmpegCmd = String.Empty;
+            switch (type)
+            {
+                case FfmpegFileOutput.M3u8:
+                    ffmpegCmd = string.Format("-y -hide_banner -loglevel error -i {0} -hls_list_size {1} -hls_flags delete_segments -acodec mp3 {2}{3}",
+                                            inputUrl, MAX_NUMBER_OF_TS_FILE_KEEP_IN_DISK, destinationFolder, M3U8_FILE_NAME);
+                    break;
+                case FfmpegFileOutput.Mp3:
+                default:
+                    ffmpegCmd = string.Format("-y -hide_banner -loglevel error -i {0} -acodec libmp3lame -flush_packets 1 {1}{2}",
+                                                       inputUrl, destinationFolder, MP3_FILE_NAME);
+                    break;
+            }
+            return ffmpegCmd;
+        }
         public static AudioUrlConverter InsertRecord(string inputUrl, bool needRecordToFile, long recordTimeInSec)
         {
             lock (_ensureThreadSafe)
@@ -196,19 +272,20 @@ namespace audioConverter.Services
                     tmp.InputUrl = inputUrl;
                     tmp.RecordTimeoutInSec = recordTimeInSec;
                     tmp.LocalFolderRecorded = GetFullPathToSharedNginxFolder(inputUrl);
-                    tmp.OutputStreamUrl = AudioUrlConverter.GenUrl(GetShortPathToSharedNginxFolder(inputUrl) + "/audio.m3u8");
+                    tmp.OutputStreamUrl = AudioUrlConverter.GenUrl(GetShortPathToSharedNginxFolder(inputUrl) + M3U8_FILE_NAME);
 
                     ListAudioConverter.Add(tmp);
+                    bool[] processCreated = new bool[2];
+                    processCreated[0] = false;
+                    processCreated[1] = false;
 
                     // Create stream folder
                     Console.WriteLine("Create local ffmpeg output folder {0}", tmp.LocalFolderRecorded);
                     System.IO.Directory.CreateDirectory(tmp.LocalFolderRecorded);
 
                     // Create ffmpeg process : m3u8
-                    string ffmpegCmd = string.Format("-y -i {0} -acodec mp3 {1}",
-                                                    inputUrl, tmp.LocalFolderRecorded + "/audio.m3u8");
-                    Console.WriteLine("FFMPEG cmd {0}", ffmpegCmd);
-
+                    string ffmpegCmd = BuildFffmpegStreamCmd(inputUrl, tmp.LocalFolderRecorded, FfmpegFileOutput.M3u8);
+                    Console.WriteLine("FFMPEG -> M3U8 cmd = ffmpeg {0}", ffmpegCmd);
 
                     var m3u8ProcessInfo = new ProcessStartInfo(_ffmpegPath, ffmpegCmd)
                     {
@@ -218,13 +295,13 @@ namespace audioConverter.Services
                         RedirectStandardError = false
                     };
 
-                    
                     try
                     {
                         var newProcess = System.Diagnostics.Process.Start(m3u8ProcessInfo);
                         if (newProcess != null)
                         {
                             tmp.ConvertProcesses.Add(newProcess);
+                            processCreated[0] = true;
                         }
                         else
                         {
@@ -239,11 +316,8 @@ namespace audioConverter.Services
 
                     if (needRecordToFile)
                     {
-                        //mp3
-                        //Sample ffmpeg -y -i http://stream.bytech.vn:3000/860262051441926 -acodec libmp3lame  -flush_packets 1 1783043925\info.mp3
-                        ffmpegCmd = string.Format("-y -i {0} -acodec libmp3lame -flush_packets 1 {1}",
-                                                       inputUrl, tmp.LocalFolderRecorded + "\\info.mp3");
-                        Console.WriteLine("FFMPEG cmd {0}", ffmpegCmd);
+                        ffmpegCmd = BuildFffmpegStreamCmd(inputUrl, tmp.LocalFolderRecorded, FfmpegFileOutput.Mp3);
+                        Console.WriteLine("FFMPEG -> MP3 cmd = ffmpeg {0}", ffmpegCmd);
                         var mp3ProcessInfo = new ProcessStartInfo(_ffmpegPath, ffmpegCmd)
                         {
                             UseShellExecute = true,
@@ -258,6 +332,7 @@ namespace audioConverter.Services
                             if (newProcess != null)
                             {
                                 tmp.ConvertProcesses.Add(newProcess);
+                                processCreated[1] = true;
                             }
                             else
                             {
@@ -270,26 +345,49 @@ namespace audioConverter.Services
                         }
 
                         tmp.OutputRecordUrl = tmp.OutputStreamUrl.Replace(".m3u8", ".mp3");
-
-                        if (tmp.ConvertProcesses.Count > 0)
-                        {
-                            AudioUrlConverter.StartAudioConverterThreadAsync(tmp);
-                        }
                     }
                     else
                     {
                         tmp.OutputRecordUrl = "";
                     }
+
+                                            
+                    // If process convert to m3u8 OK
+                    // and 
+                    // ((process convert to mp3 OK) OR (dont need record to file)
+                    if (processCreated[0] == true 
+                        && (processCreated[1] == true || (processCreated[1] == false && needRecordToFile == false)))
+                    {
+                        Console.WriteLine("Start audio convert process");
+                        AudioUrlConverter.StartAudioConverterThreadAsync(tmp);
+                    }
+                    else    // delete record
+                    {
+                        Console.WriteLine("Close all subprocess");
+                        for (var i = 0; i < tmp.ConvertProcesses.Count; i++)
+                        {
+                            try
+                            {
+                                var dontCare = CloseProcess(tmp.ConvertProcesses[i], 0);
+                            }
+                            catch (Exception e)
+                            {
+                                Console.WriteLine(e.ToString());
+                            }
+                        }
+                        tmp.OutputRecordUrl = "";
+                    }
                 }
                 else /* Url existed, update new data */
                 {
+                    Console.WriteLine("Process already existed");
                     tmp = ListAudioConverter[index];
                 }
                 return tmp;
             }
         }
 
-        public static DeleteRecordResult TerminateRecord(string inputUrl)
+        public static DeleteRecordResult TerminateRecord(string inputUrl, bool keepStream)
         {
             DeleteRecordResult ret = DeleteRecordResult.UrlNotExist;
             if (inputUrl != null && inputUrl != String.Empty)
@@ -299,7 +397,15 @@ namespace audioConverter.Services
                 {
                     if (inputUrl.Equals(ListAudioConverter[i].InputUrl))
                     {
-                        var tmp = DoTerminateFfmpegProcessAsyncWithTimeout(ListAudioConverter[i], 0);
+                        if (keepStream)
+                        {
+                            Console.WriteLine("Delete only record mp3 file, keep m3u8 process running", keepStream);
+                            var tmp = DoTerminateOnlyFileRecordProcesses(ListAudioConverter[i]);
+                        }
+                        else
+                        {
+                            var tmp = WaitAllFfmpegProcessesUntilTimeout(ListAudioConverter[i], 0, false);
+                        }
                         ret = DeleteRecordResult.Ok;
                         break;
                     }
