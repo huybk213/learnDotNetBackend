@@ -41,11 +41,6 @@ namespace audioConverter.Services
         private const string MP3_FILE_NAME = "/audio.mp3";
         private const bool _autoRestartStream = false;
         private CancellationTokenSource _cancleTaskSource;
-        private readonly ILogger _logger;
-
-        public AudioUrlConverter(ILogger<AudioUrlConverter> logger){
-            _logger = logger;
-        }
 
         public static async Task WaitTaskCompleteAsync(Process process, long delayInSec, CancellationTokenSource cancleTaskSource)
         {
