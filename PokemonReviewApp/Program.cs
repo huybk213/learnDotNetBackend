@@ -3,7 +3,8 @@ using AudioApp.Controllers;
 using audioConverter.Services;
 
 var builder = WebApplication.CreateBuilder(args);
-
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
 // Add services to the container.
 
 builder.Services.AddControllers();
@@ -25,6 +26,7 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 
 app.MapControllers();
+
 var AppConfig = new ConfigurationBuilder().AddJsonFile("appsettings.Development.json").Build();
 var NginxPath = AppConfig.GetValue<string>("NginxFolderConfig:path");
 var url = AppConfig.GetValue<string>("NginxFolderConfig:prefixUrl");

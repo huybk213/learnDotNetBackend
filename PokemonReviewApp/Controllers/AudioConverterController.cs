@@ -26,7 +26,7 @@ namespace AudioApp.Controllers
         {
             DeleteRecordResult ret;
 
-            if (url != null && url != String.Empty)
+            if (String.IsNullOrEmpty(url))
             {
                 Console.WriteLine("Terminate record = {0}", keepStream);
                 ret = AudioUrlConverter.TerminateRecord(url, keepStream);
@@ -51,7 +51,7 @@ namespace AudioApp.Controllers
         [HttpPost] 
         public IActionResult ConvertUrlToM3U8(InputAudioConverter url)
         {
-            if (url.InputUrl == null || url.InputUrl == String.Empty || url.RecordTimeInSec <= 0)
+            if (String.IsNullOrEmpty(url.InputUrl) || url.RecordTimeInSec <= 0)
             {
                 return BadRequest();
             }
@@ -74,11 +74,7 @@ namespace AudioApp.Controllers
         [HttpGet] 
         public IActionResult GetAllStreamUrl()
         {
-            var url = AudioUrlConverter.GetAllRecordUrl();
-            return Ok(new
-            {
-                url
-            });
+            return Content(AudioUrlConverter.GetAllRecordUrl().ToString(), "application/json");
         }
     }
 }
