@@ -55,7 +55,7 @@ namespace AudioApp.Controllers
                 return BadRequest();
             }
 
-            AudioUrlConverter answer = AudioUrlConverter.InsertRecord(url.InputUrl, url.RecordToMp3, url.RecordTimeInSec);
+            AudioUrlConverter.ConvertUrlInfo answer = AudioUrlConverter.InsertRecord(url.InputUrl, url.RecordToMp3, url.RecordTimeInSec);
             if (answer.OutputStreamUrl == String.Empty)
             {
                 return StatusCode(500);
@@ -63,7 +63,7 @@ namespace AudioApp.Controllers
 
             return Ok(new
             {
-                Sucess =  true, 
+                Message = answer.Result,
                 Record = answer.OutputRecordFileUrl,
                 Stream = answer.OutputStreamUrl,
             });
