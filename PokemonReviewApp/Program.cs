@@ -17,8 +17,13 @@ var app = builder.Build();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
+    Console.WriteLine("Enable swagger");
     app.UseSwagger();
     app.UseSwaggerUI();
+}
+else
+{
+    Console.WriteLine("Disabled swagger");
 }
 
 app.UseHttpsRedirection();
@@ -32,5 +37,13 @@ var NginxPath = AppConfig.GetValue<string>("NginxFolderConfig:path");
 var url = AppConfig.GetValue<string>("NginxFolderConfig:prefixUrl");
 var FFmpegPath = AppConfig.GetValue<string>("FFMPEG:path");
 AudioUrlConverter.SetNginxPath(NginxPath, url);
-AudioUrlConverter.SetFFmpegBinaryPath(FFmpegPath);
+AudioUrlConverter.SetFFmpegBinaryPath(Environment.GetEnvironmentVariable("FFMPEG_PATH"));
+
+//Create audio dir
+// If directory does not exist, create it
+if (!Directory.Exists(NginxPath))
+{
+    Directory.CreateDirectory(NginxPath);
+}
+
 app.Run();
