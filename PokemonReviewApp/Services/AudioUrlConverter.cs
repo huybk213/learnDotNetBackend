@@ -42,8 +42,6 @@ namespace audioConverter.Services
             public string OutputRecordFileUrl = String.Empty;
             public int RecordTimeoutInSec;
         };
-
-
         public string LocalFolderRecorded = String.Empty;
         public int RecordTimeoutInSec;
         public string OutputStreamUrl = String.Empty;
@@ -62,7 +60,6 @@ namespace audioConverter.Services
         private const int CONVERT_M3U8_FOREVER = Int32.MaxValue;
         private const string M3U8_FILE_NAME = "/audio.m3u8";
         private const string MP3_FILE_NAME = "/audio.mp3";
-        private const bool _autoRestartStream = false;
         private const bool AUTO_RESTART_PROCESS_WHEN_EXIT = true;
         private const int DEFAULT_RETRIES_WHEN_PROCESS_FAIL = 1000;     //
         private const int SLEEP_TIME_MS_BEFORE_RESTART_PROCESS = 60000;
@@ -199,8 +196,15 @@ namespace audioConverter.Services
                 while (p.ConvertTimeout > 0)
                 {
                     await Task.Delay(1000);
-                    Console.WriteLine($"PID {p.Process.Id} -> stream time remain {p.ConvertTimeout}s");
-                    p.ConvertTimeout--;
+                    if (p.ConvertTimeout != CONVERT_M3U8_FOREVER)
+                    {
+                        if ((p.ConvertTimeout % 30 == 0))
+                        {
+                            Console.WriteLine($"PID {p.Process.Id} -> stream time remain {p.ConvertTimeout}s");
+                        }
+                        p.ConvertTimeout--;
+                    }
+
                     int stopRequest = 0;
                     
                     if (p.CancleToken != null && p.CancleToken.IsCancellationRequested)
@@ -321,7 +325,7 @@ namespace audioConverter.Services
             switch (type)
             {
                 case FfmpegFileOutput.M3u8:
-                    ffmpegCmd = string.Format("-y -hide_banner -i {0} -loglevel info -hls_list_size {1} -hls_flags delete_segments -acodec mp3 {2}{3}",
+                    ffmpegCmd = string.Format("-y -hide_banner -i {0} -loglevel error -hls_list_size {1} -hls_flags delete_segments -acodec mp3 {2}{3}",
                                             inputUrl, MAX_NUMBER_OF_TS_FILE_KEEP_IN_DISK, destinationFolder, M3U8_FILE_NAME);
                     break;
                 case FfmpegFileOutput.Mp3:
@@ -515,7 +519,7 @@ namespace audioConverter.Services
 
             result.RecordTimeoutInSec = tmp.RecordTimeoutInSec;
             result.OutputStreamUrl = tmp.OutputStreamUrl;
-            result.OutputRecordFileUrl = tmp.OutputStreamUrl;
+            result.OutputRecordFileUrl = tmp.OutputRecordFileUrl;
             return result;
         }
 
@@ -588,11 +592,14 @@ namespace audioConverter.Services
         {
             if (!String.IsNullOrEmpty(url) && timeoutInSec > 0 && retries > 0)
             {
-                Console.WriteLine($"Sleep {SLEEP_TIME_MS_BEFORE_RESTART_PROCESS}ms then restart process, remain {retries-1} times");
+                Console.WriteLine($"Sleep {SLEEP_TIME_MS_BEFORE_RESTART_PROCESS}ms then restart process, remain {retries} times");
                 await Task.Delay(SLEEP_TIME_MS_BEFORE_RESTART_PROCESS);        // Restart every 60s
+                
                 int doRestartStep = 0;
                 lock(_ensureThreadSafe)
                 {
+                    // Cho nay co the co bug, vi du cung 1 link nhung nhieu output khac nhau
+                    // Neu ma check url da ton tai thi chi co ouput dau tien dc convert lai, cac process sau loi
                     for (var i = 0; i < ListAudioObjInfo.Count; i++)
                     {
                         doRestartStep++;
@@ -611,7 +618,7 @@ namespace audioConverter.Services
                             doRestartStep = 0;
                             if (url.Equals(ListRetryingUrls[i]))
                             {
-                                Console.WriteLine("Valid restart URL");
+                                Console.WriteLine("Valid URL");
                                 doRestartStep++;
                                 ListRetryingUrls.RemoveAt(i);
                                 break;
