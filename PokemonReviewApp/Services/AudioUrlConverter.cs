@@ -300,7 +300,7 @@ namespace audioConverter.Services
         {
             // var json = JObject.Parse("{}");
 
-            // // List<string> records = new List<string>();
+            // List<string> records = new List<string>();
             var jArray = new JArray();
 
             lock (_ensureThreadSafe)

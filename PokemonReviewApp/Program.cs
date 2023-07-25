@@ -35,15 +35,23 @@ app.MapControllers();
 var AppConfig = new ConfigurationBuilder().AddJsonFile("appsettings.Development.json").Build();
 var NginxPath = AppConfig.GetValue<string>("NginxFolderConfig:path");
 var url = AppConfig.GetValue<string>("NginxFolderConfig:prefixUrl");
-var FFmpegPath = AppConfig.GetValue<string>("FFMPEG:path");
+var ffmpegPath = Environment.GetEnvironmentVariable("FFMPEG_PATH");
 AudioUrlConverter.SetNginxPath(NginxPath, url);
-AudioUrlConverter.SetFFmpegBinaryPath(Environment.GetEnvironmentVariable("FFMPEG_PATH"));
 
-//Create audio dir
-// If directory does not exist, create it
-if (!Directory.Exists(NginxPath))
+if (ffmpegPath != null)
 {
-    Directory.CreateDirectory(NginxPath);
-}
+    AudioUrlConverter.SetFFmpegBinaryPath(ffmpegPath);
 
-app.Run();
+    //Create audio dir
+    // If directory does not exist, create it
+    if (!Directory.Exists(NginxPath))
+    {
+        Directory.CreateDirectory(NginxPath);
+    }
+
+    app.Run();
+}
+else
+{
+    Console.WriteLine("Unknown ffmpeg path, exit application");
+}

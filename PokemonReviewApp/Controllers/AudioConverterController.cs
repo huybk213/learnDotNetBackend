@@ -14,6 +14,8 @@ using System.Text;
 using audioConverter;
 using audioConverter.Services;
 using static audioConverter.Services.AudioUrlConverter;
+using radioTranscodeManager.Services;
+using static radioTranscodeManager.Services.RadioTranscodeManager;
 
 namespace AudioApp.Controllers
 {
@@ -40,7 +42,7 @@ namespace AudioApp.Controllers
                 case DeleteRecordResult.Ok:
                     return Ok("Success");
                 case DeleteRecordResult.InvalidParam:
-                    return BadRequest();
+                    return BadRequest("Invalid input");
                 case DeleteRecordResult.UrlNotExist:
                     return Ok("Url not exist");
                 default: return StatusCode(500);
