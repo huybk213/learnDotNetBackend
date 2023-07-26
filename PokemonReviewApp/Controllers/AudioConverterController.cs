@@ -52,9 +52,19 @@ namespace AudioApp.Controllers
         [HttpPost] 
         public IActionResult ConvertUrlToM3U8(InputAudioConverter url)
         {
-            if (String.IsNullOrEmpty(url.InputUrl) || url.RecordTimeInSec <= 0)
+            if (String.IsNullOrEmpty(url.InputUrl) || (url.RecordToMp3 && url.RecordTimeInSec <= 0))
             {
-                return BadRequest();
+                List<string> msg = new List<string>();
+                if (String.IsNullOrEmpty(url.InputUrl))
+                {
+                    msg.Add("Null input url");
+                }
+                if ((url.RecordToMp3 && url.RecordTimeInSec <= 0))
+                {
+                    msg.Add("Record time invalid");
+                }
+
+                return BadRequest(string.Join(",", msg.ToArray()));
             }
 
             AudioUrlConverter.ConvertUrlInfo answer = AudioUrlConverter.InsertRecord(url.InputUrl, url.RecordToMp3, url.RecordTimeInSec);

@@ -48,6 +48,7 @@ namespace audioConverter.Services
         public string OutputStreamUrl = String.Empty;
         public string OutputRecordFileUrl = String.Empty;
         public string InputUrl = String.Empty;
+        public bool NeedRecordToFile = false;
 
         private static object _ensureThreadSafe = new Object();
         private static string _nginxPath = String.Empty;
@@ -171,7 +172,7 @@ namespace audioConverter.Services
                         {
                             if (p == ListAudioObjInfo[i]._processesInfo[j])
                             {
-                                Log.Information($"Removed sub process {j}");
+                                Log.Information($"Removed sub process {j}, PID = {ListAudioObjInfo[i]._processesInfo[j].Process.Id}");
                                 ListAudioObjInfo[i]._processesInfo.RemoveAt(j--);
                             }
                         }
@@ -267,7 +268,7 @@ namespace audioConverter.Services
                 
                 if (p.CancleToken != null)
                 {
-                    Log.Information($"PID {p.Process.Id} -> Dispose cancle token");
+                    Log.Verbose($"PID {p.Process.Id} -> Dispose cancle token");
                     p.CancleToken.Dispose();
                 }
 
@@ -395,7 +396,7 @@ namespace audioConverter.Services
                 tmp.RecordTimeoutInSec = recordTimeInSec;
                 tmp.LocalFolderRecorded = GetFullPathToSharedNginxFolder(inputUrl);
                 tmp.OutputStreamUrl = AudioUrlConverter.GenUrl(GetShortPathToSharedNginxFolder(inputUrl) + M3U8_FILE_NAME);
-
+                tmp.NeedRecordToFile = needRecordToFile;
                 ListAudioObjInfo.Add(tmp);
                 bool[] processCreated = new bool[2];
                 processCreated[0] = false;
@@ -420,22 +421,24 @@ namespace audioConverter.Services
                     processInfo.CreateNoWindow = false;
                     processInfo.RedirectStandardOutput = true;
                     processInfo.RedirectStandardError = true;
-
+                    
                     p.Process = Process.Start(processInfo);
                     if (p.Process != null)
                     {
+                        Log.Information($"PID = {p.Process.Id}");
+
                         p.ConvertTimeout = CONVERT_M3U8_FOREVER;
                         p.CancleToken = new CancellationTokenSource();
                         p.TargetTrashPathWillBeClean = tmp.LocalFolderRecorded;
                         p.RecordToFile = false;
                         p.RetiesTime = retries;
+
                         tmp._processesInfo.Add(p);
-                        
                         processCreated[0] = true;
                     }
                     else
                     {
-                        Log.Information("Create new process failed");
+                        Log.Warning("Create new process failed");
                     }
                 }
                 catch (Exception ex)
@@ -460,6 +463,7 @@ namespace audioConverter.Services
                     p.Process = Process.Start(processInfo);
                     if (p.Process != null)
                     {
+                        Log.Information($"PID = {p.Process.Id}");
                         p.ConvertTimeout = recordTimeInSec;
                         p.CancleToken = new CancellationTokenSource();
                         p.TargetTrashPathWillBeClean = String.Empty;       // We wont delete mp3 file, only .ts files will be deleted
@@ -471,7 +475,7 @@ namespace audioConverter.Services
                     }
                     else
                     {
-                        Log.Information("Create new process failed");
+                        Log.Warning("Create new process failed");
                     }
 
                     tmp.OutputRecordFileUrl = tmp.OutputStreamUrl.Replace(".m3u8", ".mp3");
@@ -515,7 +519,50 @@ namespace audioConverter.Services
             {
                 //TODO xu li case edit stream
                 result.Result = "Url already existed";
-                Log.Information($"Url {ListAudioObjInfo[index].InputUrl} already existed, converted url = {ListAudioObjInfo[index].OutputStreamUrl}");
+                Log.Information($@"Url {ListAudioObjInfo[index].InputUrl} already existed, converted url = {ListAudioObjInfo[index].OutputStreamUrl}");
+
+                if (ListAudioObjInfo[index].NeedRecordToFile == false && needRecordToFile)
+                {
+                    Log.Information($"Restart record MP3 service at {ListAudioObjInfo[index].InputUrl}");
+                    //Co 2 service la service m3u8 va mp3, neu service mp3 chet -> con duy nhat m3u8
+                    //Luc nay moi khoi dong lai service mp3
+
+                    if (ListAudioObjInfo[index]._processesInfo.Count == 1)
+                    {
+                        Log.Information($"Create new ffmpeg service {ListAudioObjInfo[index].InputUrl}");
+                        var ffmpegCmd = BuildFffmpegStreamCmd(inputUrl, ListAudioObjInfo[index].LocalFolderRecorded, FfmpegFileOutput.Mp3);
+
+                        SingleProcessInfo p = new SingleProcessInfo();
+                        ProcessStartInfo processInfo = new ProcessStartInfo();
+
+                        processInfo.FileName = _ffmpegPath;
+                        processInfo.Arguments = ffmpegCmd;
+                        processInfo.UseShellExecute = false;
+                        processInfo.CreateNoWindow = false;
+                        processInfo.RedirectStandardOutput = true;
+                        processInfo.RedirectStandardError = true;
+
+                        p.Process = Process.Start(processInfo);
+                        if (p.Process != null)
+                        {
+                            Log.Information($"PID = {p.Process.Id}");
+                            p.ConvertTimeout = recordTimeInSec;
+                            p.CancleToken = new CancellationTokenSource();
+                            p.TargetTrashPathWillBeClean = String.Empty;       // We wont delete mp3 file, only .ts files will be deleted
+                            p.RecordToFile = true;
+                            p.RetiesTime = retries;
+                            ListAudioObjInfo[index].OutputRecordFileUrl = ListAudioObjInfo[index].OutputStreamUrl.Replace(".m3u8", ".mp3");
+                            ListAudioObjInfo[index]._processesInfo.Add(p);
+                            var dontCare = RunProcessUntilTimeout(ListAudioObjInfo[index], ListAudioObjInfo[index]._processesInfo[1]);       // dont care about await
+                        }
+                        else
+                        {
+                            Log.Warning("Create new process failed");
+                        }
+                    }
+
+                }
+
                 tmp = ListAudioObjInfo[index];
             }
 

@@ -6,6 +6,7 @@ using Serilog;
 using Serilog.Sinks;
 using Serilog.Sinks.SystemConsole.Themes;
 using Serilog.Events;
+using radioTranscodeManager.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
@@ -68,7 +69,7 @@ Log.Logger = new LoggerConfiguration()
 if (ffmpegPath != null)
 {
     AudioUrlConverter.SetFFmpegBinaryPath(ffmpegPath);
-    StationDB.InitDataBase();
+    RadioTranscodeManager.StartService();
 
     //Create audio dir
     // If directory does not exist, create it

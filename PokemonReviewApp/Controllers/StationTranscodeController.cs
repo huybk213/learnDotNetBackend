@@ -125,7 +125,7 @@ namespace audioConverter.Controllers
         {
             DeleteTranscodeResult ret;
 
-            if (!String.IsNullOrEmpty(stationName))
+            if (!String.IsNullOrEmpty(stationName) && !String.IsNullOrEmpty(newName) && !newName.Equals(stationName))
             {
                 Log.Information($"Edit station {stationName} to {newName}");
                 ret = RadioTranscodeManager.UpdateStationNameAndDesc(stationName, newName, newDescription);

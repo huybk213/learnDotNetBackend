@@ -28,16 +28,24 @@ namespace radioTranscodeManager.Services
             InternalError,
             Ok
         }
-        public RadioTranscodeManager GetInstance()
+        public static void StartService()
         {
             if (_radioTranscode == null)
             {
                 _radioTranscode = new RadioTranscodeManager();
                 Log.Information("Create new station manager");
-                var tmp = new StationDB();
-            }
+                StationDB.InitDataBase();
 
-            return _radioTranscode;
+                var outputRadioStationInfo = StationDB.GetAllItemsInDb();
+                foreach (var item in outputRadioStationInfo)
+                {
+                    if (!String.IsNullOrEmpty(item.InputUrl))
+                    {
+                        Log.Information($"Convert {item.StationName} -> {item.InputUrl} at startup");
+                        AudioUrlConverter.InsertRecord(item.InputUrl, false, 0);
+                    }
+                }
+            }
         }
 
 
@@ -79,6 +87,7 @@ namespace radioTranscodeManager.Services
 
         public static DeleteTranscodeResult UpdateStationUrl(string stationName, string newUrl)
         {
+            //Todo restart audio service
             DeleteTranscodeResult ret = DeleteTranscodeResult.StationNotExist;
             OutputRadioStationConverter ?tmp = GetStationInfoByName(stationName);
             if (tmp != null)
@@ -86,6 +95,8 @@ namespace radioTranscodeManager.Services
                 tmp.InputUrl = newUrl;
                 if (StationDB.EditItemInDb(stationName, tmp))
                 {
+                    Log.Information($"Convert new station {stationName} to URL {newUrl}");
+                    AudioUrlConverter.InsertRecord(newUrl, false, 0);
                     ret = DeleteTranscodeResult.Ok;
                 }
                 else
@@ -100,9 +111,12 @@ namespace radioTranscodeManager.Services
         public static DeleteTranscodeResult RemoveStationInfoByName(string stationName)
         {
             DeleteTranscodeResult ret = DeleteTranscodeResult.StationNotExist;
-            
+            OutputRadioStationConverter? tmp = GetStationInfoByName(stationName);
+
             if (StationDB.RemoveItemInDb(stationName))
             {
+                Log.Information($"Station {stationName} removed, do terminate url {tmp.InputUrl}");
+                AudioUrlConverter.TerminateRecord(tmp.InputUrl);
                 ret = DeleteTranscodeResult.Ok;
             }
             else
@@ -122,6 +136,8 @@ namespace radioTranscodeManager.Services
             DeleteTranscodeResult ret = DeleteTranscodeResult.StationNotExist;
             if (StationDB.WriteNewItemToDb(info))
             {
+                Log.Information($"Convert new station {info.StationName} to URL {info.InputUrl}");
+                AudioUrlConverter.InsertRecord(info.InputUrl, false, 0);
                 ret = DeleteTranscodeResult.Ok;
             }
             else
