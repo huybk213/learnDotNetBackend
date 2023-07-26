@@ -16,8 +16,11 @@ namespace radioTranscodeManager.Services
     {
         public string OutputUrl { get; set; } = default!;
     }
+
     public class RadioTranscodeManager
     {
+        private static RadioTranscodeManager? _radioTranscode;
+
         public enum DeleteTranscodeResult
         {
             InvalidParam,
@@ -25,45 +28,51 @@ namespace radioTranscodeManager.Services
             InternalError,
             Ok
         }
-        //So luong thiet bi it nen cache vao RAM cho nhanh
-        private static object _ensureThreadSafe = new Object();
-        private static List<OutputRadioStationConverter> _outputRadioStationInfo = new List<OutputRadioStationConverter>();
+        public RadioTranscodeManager GetInstance()
+        {
+            if (_radioTranscode == null)
+            {
+                _radioTranscode = new RadioTranscodeManager();
+                Log.Information("Create new station manager");
+                var tmp = new StationDB();
+            }
+
+            return _radioTranscode;
+        }
+
 
         public static OutputRadioStationConverter? GetStationInfoByName(string stationName)
         {
-            OutputRadioStationConverter tmp = null;
-            lock (_ensureThreadSafe)
+            OutputRadioStationConverter? tmp = StationDB.ReadItemInDbByName(stationName);
+            if (tmp == null)
             {
-                for (var i = 0; i < _outputRadioStationInfo.Count; i++)
-                {
-                    if (_outputRadioStationInfo[i].StationName.Equals(stationName))
-                    {
-                        tmp = _outputRadioStationInfo[i];
-                        break;
-                    }
-                }
+                Log.Information($"Not found item {stationName} in db");
             }
 
             return tmp;
         }
 
 
-        public static DeleteTranscodeResult UpdateStationName(string stationName, string newName, string newDescription)
+        public static DeleteTranscodeResult UpdateStationNameAndDesc(string stationName, string newName, string newDescription)
         {
             DeleteTranscodeResult ret = DeleteTranscodeResult.StationNotExist;
-            lock (_ensureThreadSafe)
+            OutputRadioStationConverter? tmp = GetStationInfoByName(stationName) ;
+            if (tmp != null)
             {
-                for (var i = 0; i < _outputRadioStationInfo.Count; i++)
+                Log.Information("Station exited, update new one");
+                tmp.StationName = newName;
+                tmp.Description = newDescription;
+
+                if (StationDB.EditItemInDb(stationName, tmp))
                 {
-                    if (_outputRadioStationInfo[i].StationName.Equals(stationName))
-                    {
-                        _outputRadioStationInfo[i].StationName = newName;
-                        _outputRadioStationInfo[i].Description = newDescription;
-                        ret = DeleteTranscodeResult.Ok;
-                        break;
-                    }
+                    ret = DeleteTranscodeResult.Ok;
+                }
+                else
+                {
+                    ret = DeleteTranscodeResult.InternalError;
                 }
             }
+            
             return ret;
         }
 
@@ -71,66 +80,65 @@ namespace radioTranscodeManager.Services
         public static DeleteTranscodeResult UpdateStationUrl(string stationName, string newUrl)
         {
             DeleteTranscodeResult ret = DeleteTranscodeResult.StationNotExist;
-            lock (_ensureThreadSafe)
+            OutputRadioStationConverter ?tmp = GetStationInfoByName(stationName);
+            if (tmp != null)
             {
-                for (var i = 0; i < _outputRadioStationInfo.Count; i++)
+                tmp.InputUrl = newUrl;
+                if (StationDB.EditItemInDb(stationName, tmp))
                 {
-                    if (_outputRadioStationInfo[i].StationName.Equals(stationName))
-                    {
-                        _outputRadioStationInfo[i].InputUrl = newUrl;
-                        AudioUrlConverter.InsertRecord(newUrl, false, 0);
-                        ret = DeleteTranscodeResult.Ok;
-                        break;
-                    }
+                    ret = DeleteTranscodeResult.Ok;
                 }
+                else
+                {
+                    ret = DeleteTranscodeResult.InternalError;
+                }
+            }
+
+            return ret;
+        }
+
+        public static DeleteTranscodeResult RemoveStationInfoByName(string stationName)
+        {
+            DeleteTranscodeResult ret = DeleteTranscodeResult.StationNotExist;
+            
+            if (StationDB.RemoveItemInDb(stationName))
+            {
+                ret = DeleteTranscodeResult.Ok;
+            }
+            else
+            {
+                ret = DeleteTranscodeResult.InternalError;
+            }
+
+            return ret;
+        }
+        public static DeleteTranscodeResult InsertTranscodeInfo(OutputRadioStationConverter info)
+        {
+            Log.Information($"Input url {info.InputUrl}");
+            Log.Information($"Station name {info.StationName}");
+            Log.Information($"Descript url {info.Description}");
+            Log.Information($"Output url {info.OutputUrl}");
+
+            DeleteTranscodeResult ret = DeleteTranscodeResult.StationNotExist;
+            if (StationDB.WriteNewItemToDb(info))
+            {
+                ret = DeleteTranscodeResult.Ok;
+            }
+            else
+            {
+                ret = DeleteTranscodeResult.InternalError;
             }
             return ret;
         }
 
-        public static Boolean RemoveStationInfoByName(string stationName)
-        {
-            bool retval = false;
-            lock (_ensureThreadSafe)
-            {
-                for (var i = 0; i < _outputRadioStationInfo.Count; i++)
-                {
-                    if (_outputRadioStationInfo[i].StationName.Equals(stationName))
-                    {
-                        AudioUrlConverter.TerminateRecord(_outputRadioStationInfo[i].InputUrl);
-                        _outputRadioStationInfo.RemoveAt(i);
-                        retval = true;
-                        break;
-                    }
-                }
-            }
-            return retval;
-        }
-        public static void InsertTranscodeInfo(OutputRadioStationConverter info)
-        {
-            Console.WriteLine($"Input url {info.InputUrl}");
-            Console.WriteLine($"Station name {info.StationName}");
-            Console.WriteLine($"Descript url {info.Description}");
-            Console.WriteLine($"Output url {info.OutputUrl}");
-            lock (_ensureThreadSafe)
-            {
-                if (!_outputRadioStationInfo.Contains(info))
-                {
-                    _outputRadioStationInfo.Add(info);
-                }
-                else
-                {
-                    Console.WriteLine("Item already existed");
-                }
-            }
-        }
-
         public static JArray GetAllTranscodedStationInfo()
         {
+            var outputRadioStationInfo = StationDB.GetAllItemsInDb();
             var jArray = new JArray();
 
-            lock (_ensureThreadSafe)
+            if (outputRadioStationInfo != null)
             {
-                foreach (var item in _outputRadioStationInfo)
+                foreach (var item in outputRadioStationInfo)
                 {
                     jArray.Add(new JObject(
                         new JProperty("StationName", item.StationName),

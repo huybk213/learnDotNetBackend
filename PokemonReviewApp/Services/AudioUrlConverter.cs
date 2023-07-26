@@ -42,6 +42,7 @@ namespace audioConverter.Services
             public string OutputRecordFileUrl = String.Empty;
             public int RecordTimeoutInSec;
         };
+
         public string LocalFolderRecorded = String.Empty;
         public int RecordTimeoutInSec;
         public string OutputStreamUrl = String.Empty;
@@ -61,8 +62,8 @@ namespace audioConverter.Services
         private const string M3U8_FILE_NAME = "/audio.m3u8";
         private const string MP3_FILE_NAME = "/audio.mp3";
         private const bool AUTO_RESTART_PROCESS_WHEN_EXIT = true;
-        private const int DEFAULT_RETRIES_WHEN_PROCESS_FAIL = 1000;     //
-        private const int SLEEP_TIME_MS_BEFORE_RESTART_PROCESS = 60000;
+        private const int DEFAULT_RETRIES_WHEN_PROCESS_FAIL = 10000;     //
+        private const int SLEEP_TIME_MS_BEFORE_RESTART_PROCESS = 120000;
 
         //This function create unique string from a input string
         private static string GetShortPathToSharedNginxFolder(string inputUrl)
@@ -86,13 +87,13 @@ namespace audioConverter.Services
         {
             _nginxPath = path;
             _prefixUrl = prefixUrl;
-            Console.WriteLine("Nginx = {0}, url = {1}", _nginxPath, _prefixUrl);
+            Log.Information("Nginx = {0}, url = {1}", _nginxPath, _prefixUrl);
         }
 
         public static void SetFFmpegBinaryPath(string path)
         {
             _ffmpegPath = path;
-            Console.WriteLine("FFmpegPath = {0}", _ffmpegPath);
+            Log.Information("FFmpegPath = {0}", _ffmpegPath);
         }
 
         public static string GenUrl(string localFileName)
@@ -109,13 +110,13 @@ namespace audioConverter.Services
 
             if (p.HasExited)
             {
-                Console.WriteLine($"Process {p.Id} already exited");
+                Log.Information($"Process {p.Id} already exited");
                 return;
             }
 
             try
             {
-                Console.WriteLine($"Killing PID {p.Id}");
+                Log.Information($"Killing PID {p.Id}");
                 p.Kill();
                 
                 // Wait until exist or timeout
@@ -128,14 +129,14 @@ namespace audioConverter.Services
 
                 if (p.HasExited == false)
                 {
-                    Console.WriteLine($"Kill PID {p.Id} -> FAILED");
+                    Log.Information($"Kill PID {p.Id} -> FAILED");
                 }
                 else
                 {
-                    Console.WriteLine($"Kill PID {p.Id} -> OK");
+                    Log.Information($"Kill PID {p.Id} -> OK");
                 }
             }
-            catch (Exception ex) { Console.WriteLine(ex.ToString()); }
+            catch (Exception ex) { Log.Information(ex.ToString()); }
         }
 
         //Delete audio .*ts trash file, keep .mp3 file
@@ -148,12 +149,12 @@ namespace audioConverter.Services
             {
                 try
                 {
-                    // Console.WriteLine($"Delete file {file.ToString()}");
+                    // Log.Information($"Delete file {file.ToString()}");
                     await Task.Factory.StartNew(() => file.Delete());
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine(e.ToString());
+                    Log.Warning(e.ToString());
                 }
             }
         }
@@ -170,14 +171,14 @@ namespace audioConverter.Services
                         {
                             if (p == ListAudioObjInfo[i]._processesInfo[j])
                             {
-                                Console.WriteLine($"Removed sub process {j}");
-                                ListAudioObjInfo[i]._processesInfo.RemoveAt(j);
+                                Log.Information($"Removed sub process {j}");
+                                ListAudioObjInfo[i]._processesInfo.RemoveAt(j--);
                             }
                         }
                         if (ListAudioObjInfo[i]._processesInfo.Count == 0)
                         {
-                            Console.WriteLine("No more sub-process, remove whole object");
-                            ListAudioObjInfo.RemoveAt(i);
+                            Log.Information("No more sub-process, remove whole object");
+                            ListAudioObjInfo.RemoveAt(i--);
                         }
                     }
                     
@@ -200,7 +201,7 @@ namespace audioConverter.Services
                     {
                         if ((p.ConvertTimeout % 30 == 0))
                         {
-                            Console.WriteLine($"PID {p.Process.Id} -> stream time remain {p.ConvertTimeout}s");
+                            Log.Information($"PID {p.Process.Id} -> stream time remain {p.ConvertTimeout}s");
                         }
                         p.ConvertTimeout--;
                     }
@@ -214,29 +215,29 @@ namespace audioConverter.Services
 
                     if (stopRequest > 0)
                     {
-                        Console.WriteLine($"{stopRequest} Tasks exited by CancellationRequested");
+                        Log.Information($"{stopRequest} Tasks exited by CancellationRequested");
                         break;
                     }
                     else if (p.Process.HasExited)
                     {
-                        Console.WriteLine($"PID {p.Process.Id} -> exited by error code {p.Process.ExitCode}");
+                        Log.Information($"PID {p.Process.Id} -> exited by error code {p.Process.ExitCode}");
                         try 
                         {
                             string line = p.Process.StandardOutput.ReadToEnd();
                             if (!String.IsNullOrEmpty(line))
                             {
-                                Console.WriteLine($"Stdout ->{line}");
+                                Log.Information($"Stdout ->{line}");
                             }
 
                             line = p.Process.StandardError.ReadToEnd();
                             if (!String.IsNullOrEmpty(line))
                             {
-                                Console.WriteLine($"Stderr -> {line}");
+                                Log.Information($"Stderr -> {line}");
                             }
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine(ex.ToString());
+                            Log.Information(ex.ToString());
                         }
 
                         if (AUTO_RESTART_PROCESS_WHEN_EXIT && p.ConvertTimeout > 0 && p.RetiesTime > 0)
@@ -252,7 +253,7 @@ namespace audioConverter.Services
                             }
                             catch (Exception e)
                             {
-                                Console.WriteLine(e.Message);
+                                Log.Information(e.Message);
                             }
                         }
                         break;
@@ -261,12 +262,12 @@ namespace audioConverter.Services
 
                 if (p.ConvertTimeout == 0)
                 {
-                    Console.WriteLine($"PID = {p.Process.Id} timeout");
+                    Log.Information($"PID = {p.Process.Id} timeout");
                 }
                 
                 if (p.CancleToken != null)
                 {
-                    Console.WriteLine($"PID {p.Process.Id} -> Dispose cancle token");
+                    Log.Information($"PID {p.Process.Id} -> Dispose cancle token");
                     p.CancleToken.Dispose();
                 }
 
@@ -275,21 +276,21 @@ namespace audioConverter.Services
                 if (!String.IsNullOrEmpty(p.TargetTrashPathWillBeClean))
                 {
                     // Remove .ts file
-                    Console.WriteLine($"Clean folder -> {p.TargetTrashPathWillBeClean}");
+                    Log.Information($"Clean folder -> {p.TargetTrashPathWillBeClean}");
                     await DeleteAudioTrashFilesAsync(p.TargetTrashPathWillBeClean);
-                    Console.WriteLine("Done");
+                    Log.Information("Done");
                 }
                 RemoveProcessFromList(obj, p);
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Close subprocess failed {0}", ex.ToString());
+                Log.Information("Close subprocess failed {0}", ex.ToString());
             }
         }
 
         public static void StartAudioConverterThreadAsync(AudioUrlConverter obj)
         {
-            Console.WriteLine($"Number of process count -> {obj._processesInfo.Count}");
+            Log.Information($"Number of process count -> {obj._processesInfo.Count}");
             for (int i = 0; i < obj._processesInfo.Count; i++)
             {
                 var tmp = RunProcessUntilTimeout(obj, obj._processesInfo[i]);       // dont care about await
@@ -339,7 +340,7 @@ namespace audioConverter.Services
 
         private static void OnFfmpegExit(Object sender, System.EventArgs e)
         {
-            Console.WriteLine("Ffmpeg exit code = {0}", ((Process)sender).ExitCode);
+            Log.Information("Ffmpeg exit code = {0}", ((Process)sender).ExitCode);
         }
 
         private static void OnFfmpegStdoutMsg(Object sender, string msg)
@@ -348,14 +349,14 @@ namespace audioConverter.Services
             {
                 if (msg.Contains("Server returned 404 Not Found"))
                 {
-                    Console.WriteLine("FF STDOUT {0}", msg);
+                    Log.Information("FF STDOUT {0}", msg);
                 }
             }
             // {
-            //     Console.WriteLine("FF STDOUT : {0} -> {1}", sender.ToString(), msg);
+            //     Log.Information("FF STDOUT : {0} -> {1}", sender.ToString(), msg);
             // }
             
-            // Console.WriteLine("FF STDOUT {0} -> {1}", sender.ToString(), msg);
+            // Log.Information("FF STDOUT {0} -> {1}", sender.ToString(), msg);
 
         }
 
@@ -363,10 +364,10 @@ namespace audioConverter.Services
         {
             if (!String.IsNullOrEmpty(msg))
             {
-                Console.WriteLine("FF STDERR {0} -> {1}", sender.ToString(), msg);
+                Log.Information("FF STDERR {0} -> {1}", sender.ToString(), msg);
                 if (msg.Contains("Server returned 404 Not Found"))
                 {
-                    Console.WriteLine("FFMEG -> Link 404");
+                    Log.Information("FFMEG -> Link 404");
                 }
             }
         }
@@ -401,12 +402,12 @@ namespace audioConverter.Services
                 processCreated[1] = false;
 
                 // Create stream folder
-                Console.WriteLine($"Local ffmpeg output folder -> {tmp.LocalFolderRecorded}");
+                Log.Information($"Local ffmpeg output folder -> {tmp.LocalFolderRecorded}");
                 System.IO.Directory.CreateDirectory(tmp.LocalFolderRecorded);
 
                 // Create ffmpeg process : m3u8
                 string ffmpegCmd = BuildFffmpegStreamCmd(inputUrl, tmp.LocalFolderRecorded, FfmpegFileOutput.M3u8);
-                Console.WriteLine("FFMPEG -> M3U8 cmd = ffmpeg {0}", ffmpegCmd);
+                Log.Information("FFMPEG -> M3U8 cmd = ffmpeg {0}", ffmpegCmd);
 
                 try
                 {
@@ -419,7 +420,7 @@ namespace audioConverter.Services
                     processInfo.CreateNoWindow = false;
                     processInfo.RedirectStandardOutput = true;
                     processInfo.RedirectStandardError = true;
-                    
+
                     p.Process = Process.Start(processInfo);
                     if (p.Process != null)
                     {
@@ -434,12 +435,12 @@ namespace audioConverter.Services
                     }
                     else
                     {
-                        Console.WriteLine("Create new process failed");
+                        Log.Information("Create new process failed");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"FFMPEG process failed {ex.Message}");
+                    Log.Information($"FFMPEG process failed {ex.Message}");
                 }
 
                 if (needRecordToFile)
@@ -470,7 +471,7 @@ namespace audioConverter.Services
                     }
                     else
                     {
-                        Console.WriteLine("Create new process failed");
+                        Log.Information("Create new process failed");
                     }
 
                     tmp.OutputRecordFileUrl = tmp.OutputStreamUrl.Replace(".m3u8", ".mp3");
@@ -488,13 +489,13 @@ namespace audioConverter.Services
                     && (processCreated[1] == true || (processCreated[1] == false && needRecordToFile == false)))
                 {
                     result.Result = "Success";
-                    Console.WriteLine("Start audio convert process");
+                    Log.Information("Start audio convert process");
                     AudioUrlConverter.StartAudioConverterThreadAsync(tmp);
                 }
                 else    // delete record
                 {
                     // TODO close record
-                    Console.WriteLine("Close all subprocess");
+                    Log.Information("Close all subprocess");
                     for (var i = 0; i < tmp._processesInfo.Count; i++)
                     {
                         try
@@ -503,7 +504,7 @@ namespace audioConverter.Services
                         }
                         catch (Exception e)
                         {
-                            Console.WriteLine(e.ToString());
+                            Log.Information(e.ToString());
                         }
                     }
                     result.Result = "Create process failed";
@@ -512,8 +513,9 @@ namespace audioConverter.Services
             }
             else /* Url existed, update new data */
             {
+                //TODO xu li case edit stream
                 result.Result = "Url already existed";
-                Console.WriteLine($"Url {ListAudioObjInfo[index].InputUrl} already existed, converted url = {ListAudioObjInfo[index].OutputStreamUrl}");
+                Log.Information($"Url {ListAudioObjInfo[index].InputUrl} already existed, converted url = {ListAudioObjInfo[index].OutputStreamUrl}");
                 tmp = ListAudioObjInfo[index];
             }
 
@@ -553,13 +555,13 @@ namespace audioConverter.Services
                                 }
                                 catch (Exception e)
                                 {
-                                    Console.WriteLine($"Send terminate signal failed {e.ToString()}");
+                                    Log.Information($"Send terminate signal failed {e.ToString()}");
                                     ret = DeleteRecordResult.InternalError;
                                 }
                             }
                             // if (keepStreamMp3Recorded)
                             // {
-                            //     Console.WriteLine("Delete only record mp3 file, keep m3u8 process running", keepStreamMp3Recorded);
+                            //     Log.Information("Delete only record mp3 file, keep m3u8 process running", keepStreamMp3Recorded);
                             //     var tmp = DoTerminateOnlyMp3RecordProcesses(ListAudioObjInfo[i]);
                             // }
                             // else        // Delete all
@@ -575,8 +577,9 @@ namespace audioConverter.Services
                     {
                         if (inputUrl.Equals(ListRetryingUrls[i]))
                         {
-                            Console.WriteLine($"Remove item {ListRetryingUrls[i]} from retrying list");
+                            Log.Information($"Remove item {ListRetryingUrls[i]} from retrying list");
                             ListRetryingUrls.Remove(inputUrl);
+                            i--;
                         }
                     }
                 }
@@ -592,49 +595,52 @@ namespace audioConverter.Services
         {
             if (!String.IsNullOrEmpty(url) && timeoutInSec > 0 && retries > 0)
             {
-                Console.WriteLine($"Sleep {SLEEP_TIME_MS_BEFORE_RESTART_PROCESS}ms then restart process, remain {retries} times");
+                Log.Information($"Sleep {SLEEP_TIME_MS_BEFORE_RESTART_PROCESS}ms then restart process, remain {retries} times");
                 await Task.Delay(SLEEP_TIME_MS_BEFORE_RESTART_PROCESS);        // Restart every 60s
                 
                 int doRestartStep = 0;
                 lock(_ensureThreadSafe)
                 {
                     // Cho nay co the co bug, vi du cung 1 link nhung nhieu output khac nhau
-                    // Neu ma check url da ton tai thi chi co ouput dau tien dc convert lai, cac process sau loi
+                    // Neu ma check url da ton tai thi chi co ouput dau tien dc convert lai, cac process sau
+                    // 
+
+
                     for (var i = 0; i < ListAudioObjInfo.Count; i++)
                     {
                         doRestartStep++;
                         if (url.Equals(ListAudioObjInfo[i].InputUrl))
                         {
-                            Console.WriteLine($"Url {url} already in list");
+                            Log.Information($"Url {url} already in list");
                             doRestartStep = 0;
                             break;
                         }
                     }
 
-                    if (doRestartStep > 0)
+                    if (doRestartStep > 0 || ListAudioObjInfo.Count > 0)
                     {
                         for (int i = 0; i < ListRetryingUrls.Count; i++)
                         {
                             doRestartStep = 0;
                             if (url.Equals(ListRetryingUrls[i]))
                             {
-                                Console.WriteLine("Valid URL");
+                                Log.Information("Valid URL");
                                 doRestartStep++;
-                                ListRetryingUrls.RemoveAt(i);
+                                ListRetryingUrls.RemoveAt(i--);
                                 break;
                             }
                         }
 
                         if (doRestartStep > 0)
                         {
-                            Console.WriteLine($"Restart {url}, timeout = {timeoutInSec}");
+                            Log.Information($"Restart {url}, timeout = {timeoutInSec}");
                             InsertRecordNoThreadSafe(url, needRecordToFile, timeoutInSec, retries);
                         }
                     }
 
                     if (doRestartStep == 0)
                     {
-                        Console.WriteLine("Complete finish seq");
+                        Log.Information("Complete finish seq");
                     }
                 }
             }

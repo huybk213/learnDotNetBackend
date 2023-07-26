@@ -1,6 +1,11 @@
 using Microsoft.Extensions.Configuration;
 using AudioApp.Controllers;
 using audioConverter.Services;
+using System.Data.Entity;
+using Serilog;
+using Serilog.Sinks;
+using Serilog.Sinks.SystemConsole.Themes;
+using Serilog.Events;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
@@ -32,15 +37,38 @@ app.UseAuthorization();
 
 app.MapControllers();
 
+//Log.Logger = new LoggerConfiguration()
+//        .MinimumLevel.Debug()
+//        .WriteTo.Console()
+//        .WriteTo.File("logs/myapp.txt", rollingInterval: RollingInterval.Day)
+//        .CreateLogger();
+
+
+
 var AppConfig = new ConfigurationBuilder().AddJsonFile("appsettings.Development.json").Build();
 var NginxPath = AppConfig.GetValue<string>("NginxFolderConfig:path");
 var url = AppConfig.GetValue<string>("NginxFolderConfig:prefixUrl");
 var ffmpegPath = Environment.GetEnvironmentVariable("FFMPEG_PATH");
 AudioUrlConverter.SetNginxPath(NginxPath, url);
+//app.Logger.LogInformation($"NginxPath = {NginxPath}");
+
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Debug()
+        .WriteTo.Console()
+        .WriteTo.Logger(l => l.Filter.ByIncludingOnly(e => e.Level == LogEventLevel.Information).WriteTo.File($@"{NginxPath}/Log/Info-.txt",
+                                                                                                                rollingInterval: RollingInterval.Day))
+        .WriteTo.Logger(l => l.Filter.ByIncludingOnly(e => e.Level == LogEventLevel.Debug).WriteTo.File($@"{NginxPath}/Log/Debug-.txt",
+                                                                                                        rollingInterval: RollingInterval.Day))
+        .WriteTo.Logger(l => l.Filter.ByIncludingOnly(e => e.Level == LogEventLevel.Warning).WriteTo.File($@"{NginxPath}/Log/Warning-.txt",
+                                                                                                        rollingInterval: RollingInterval.Day))
+        .WriteTo.Logger(l => l.Filter.ByIncludingOnly(e => e.Level == LogEventLevel.Error).WriteTo.File($@"{NginxPath}/Log/Error-.txt",
+                                                                                                        rollingInterval: RollingInterval.Day))
+    .CreateLogger();
 
 if (ffmpegPath != null)
 {
     AudioUrlConverter.SetFFmpegBinaryPath(ffmpegPath);
+    StationDB.InitDataBase();
 
     //Create audio dir
     // If directory does not exist, create it

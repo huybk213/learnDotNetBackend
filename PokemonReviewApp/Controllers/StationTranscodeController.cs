@@ -5,33 +5,17 @@ using Microsoft.Data.Sqlite;
 using radioTranscodeManager.Services;
 using System;
 using System.Data;
+using Serilog;
+using Serilog.Sinks;
 
 using static radioTranscodeManager.Services.RadioTranscodeManager;
 
 namespace audioConverter.Controllers
 {
-    [Route("station")]
+    [Route("transcode")]
     [ApiController]
     public class StationTranscodeController : Controller
     {
-        private static void LoadStationInfoFromDb()
-        {
-            using (IDbConnection cnn = new SQLiteConnection(LoadConnectionString()))
-            {
-                try
-                {
-                    DataUser_AppVersion_Info output = cnn.Query<DataUser_AppVersion_Info>("select * from AppVersion_Info", new DynamicParameters()).FirstOrDefault();
-                    return output;
-                }
-                catch
-                {
-
-                }
-
-                return null;
-            }
-        }
-
         [HttpGet]
         [Route("get-all")]
         public IActionResult GetAllRadioTranscodeUrl()
@@ -48,15 +32,15 @@ namespace audioConverter.Controllers
             String Record = String.Empty;
             String StationName = String.Empty; 
             String Info = String.Empty;
-            OutputRadioStationConverter tmp = null;
+            OutputRadioStationConverter? tmp = null;
 
             if (!String.IsNullOrEmpty(stationName))
             {
-                Console.WriteLine($"Remove station {stationName}");
+                Log.Information($"Get station {stationName}");
                 tmp = GetStationInfoByName(stationName);
                 if (tmp == null)
                 {
-                    Console.WriteLine($"Station {stationName} not existed");
+                    Log.Information($"Station {stationName} not existed");
                     ret = DeleteTranscodeResult.StationNotExist;
                 }
                 else
@@ -83,13 +67,13 @@ namespace audioConverter.Controllers
                 case DeleteTranscodeResult.InvalidParam:
                     return BadRequest();
                 case DeleteTranscodeResult.StationNotExist:
-                    return Ok("Station not existed");
+                    return BadRequest("Station not existed");
                 default: return StatusCode(500);
             }
         }
 
 
-        [Route("delete")]
+        [Route("delete-by-name")]
         [HttpDelete]
         public IActionResult RemoveTranscodeRadioStation(string stationName)
         {
@@ -97,23 +81,23 @@ namespace audioConverter.Controllers
 
             if (!String.IsNullOrEmpty(stationName))
             {
-                Console.WriteLine($"Remove station {stationName}");
+                Log.Information($"Remove station {stationName}");
                 var tmp = RadioTranscodeManager.GetStationInfoByName(stationName);
                 if (tmp == null)
                 {
-                    Console.WriteLine($"Station {stationName} not existed");
+                    Log.Information($"Station {stationName} not existed");
                     ret = DeleteTranscodeResult.StationNotExist;
                 }
                 else
                 {
-                    if (RemoveStationInfoByName(stationName))
+                    if (RemoveStationInfoByName(stationName) == DeleteTranscodeResult.Ok)
                     {
-                        Console.WriteLine($"Remove station {stationName} success");
+                        Log.Information($"Remove station {stationName} success");
                         ret = DeleteTranscodeResult.Ok;
                     }
                     else
                     {
-                        Console.WriteLine($"Remove station {stationName} failed");
+                        Log.Information($"Remove station {stationName} failed");
                         ret = DeleteTranscodeResult.InternalError;
                     }
                 }
@@ -135,7 +119,7 @@ namespace audioConverter.Controllers
             }
         }
 
-        [Route("edit-name-desc")]
+        [Route("edit-name-and-desc")]
         [HttpPut]
         public IActionResult EditTranscodeRadioStationName(string stationName, string newName, string newDescription)
         {
@@ -143,16 +127,16 @@ namespace audioConverter.Controllers
 
             if (!String.IsNullOrEmpty(stationName))
             {
-                Console.WriteLine($"Edit station {stationName} to {newName}");
-                ret = RadioTranscodeManager.UpdateStationName(stationName, newName, newDescription);
+                Log.Information($"Edit station {stationName} to {newName}");
+                ret = RadioTranscodeManager.UpdateStationNameAndDesc(stationName, newName, newDescription);
                 if (ret == DeleteTranscodeResult.StationNotExist)
                 {
-                    Console.WriteLine($"Station {stationName} not existed");
+                    Log.Information($"Station {stationName} not existed");
                     ret = DeleteTranscodeResult.StationNotExist;
                 }
                 else
                 {
-                    Console.WriteLine($"Station {stationName} updated to new name {newName}, {newDescription}");
+                    Log.Information($"Station {stationName} updated to new name {newName}, {newDescription}");
                     ret = DeleteTranscodeResult.Ok;
                 }
             }
@@ -168,12 +152,12 @@ namespace audioConverter.Controllers
                 case DeleteTranscodeResult.InvalidParam:
                     return BadRequest();
                 case DeleteTranscodeResult.StationNotExist:
-                    return Ok("Station not existed");
+                    return BadRequest("Station not existed");
                 default: return StatusCode(500);
             }
         }
 
-        [Route("edit-url")]
+        [Route("edit-url-by-name")]
         [HttpPut]
         public IActionResult EditTranscodeRadioStationUrl(string stationName, string newUrl)
         {
@@ -181,16 +165,16 @@ namespace audioConverter.Controllers
 
             if (!String.IsNullOrEmpty(stationName))
             {
-                Console.WriteLine($"Edit station {stationName} URL to {newUrl}");
+                Log.Information($"Edit station {stationName} URL to {newUrl}");
                 ret = RadioTranscodeManager.UpdateStationUrl(stationName, newUrl);
                 if (ret == DeleteTranscodeResult.StationNotExist)
                 {
-                    Console.WriteLine($"Station {stationName} not existed");
+                    Log.Information($"Station {stationName} not existed");
                     ret = DeleteTranscodeResult.StationNotExist;
                 }
                 else
                 {
-                    Console.WriteLine($"Station {stationName} updated to new url : {newUrl}");
+                    Log.Information($"Station {stationName} updated to new url : {newUrl}");
                     ret = DeleteTranscodeResult.Ok;
                 }
             }
@@ -206,14 +190,14 @@ namespace audioConverter.Controllers
                 case DeleteTranscodeResult.InvalidParam:
                     return BadRequest();
                 case DeleteTranscodeResult.StationNotExist:
-                    return Ok("Station not existed");
+                    return BadRequest("Station not existed");
                 default: return StatusCode(500);
             }
         }
 
 
         [HttpPost]
-        [Route("create-new-station")]
+        [Route("create")]
         public IActionResult TranscodeRadioStation(InputRadioStationConverter url)
         {
             if (String.IsNullOrEmpty(url.InputUrl) || String.IsNullOrEmpty(url.StationName))
