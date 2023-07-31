@@ -422,10 +422,10 @@ namespace audioConverter.Services
                     processInfo.RedirectStandardOutput = true;
                     processInfo.RedirectStandardError = true;
                     
-                    p.Process = Process.Start(processInfo);
-                    if (p.Process != null)
+                    var tmpProcess = Process.Start(processInfo);
+                    if (tmpProcess != null)
                     {
-                        Log.Information($"PID = {p.Process.Id}");
+                        p.Process = tmpProcess;
 
                         p.ConvertTimeout = CONVERT_M3U8_FOREVER;
                         p.CancleToken = new CancellationTokenSource();
@@ -435,6 +435,7 @@ namespace audioConverter.Services
 
                         tmp._processesInfo.Add(p);
                         processCreated[0] = true;
+                        Log.Information($"PID = {p.Process.Id}");
                     }
                     else
                     {
@@ -459,11 +460,12 @@ namespace audioConverter.Services
                     processInfo.CreateNoWindow = false;
                     processInfo.RedirectStandardOutput = true;
                     processInfo.RedirectStandardError = true;
-                    
-                    p.Process = Process.Start(processInfo);
-                    if (p.Process != null)
+
+                    var tmpProcess = Process.Start(processInfo);
+                    if (tmpProcess != null)
                     {
-                        Log.Information($"PID = {p.Process.Id}");
+                        p.Process = tmpProcess;
+
                         p.ConvertTimeout = recordTimeInSec;
                         p.CancleToken = new CancellationTokenSource();
                         p.TargetTrashPathWillBeClean = String.Empty;       // We wont delete mp3 file, only .ts files will be deleted
@@ -472,6 +474,7 @@ namespace audioConverter.Services
                         tmp._processesInfo.Add(p);
                         
                         processCreated[1] = true;
+                        Log.Information($"PID = {p.Process.Id}");
                     }
                     else
                     {
@@ -542,10 +545,10 @@ namespace audioConverter.Services
                         processInfo.RedirectStandardOutput = true;
                         processInfo.RedirectStandardError = true;
 
-                        p.Process = Process.Start(processInfo);
-                        if (p.Process != null)
+                        var tmpProcess = Process.Start(processInfo);
+                        if (tmpProcess != null)
                         {
-                            Log.Information($"PID = {p.Process.Id}");
+                            p.Process = tmpProcess;
                             p.ConvertTimeout = recordTimeInSec;
                             p.CancleToken = new CancellationTokenSource();
                             p.TargetTrashPathWillBeClean = String.Empty;       // We wont delete mp3 file, only .ts files will be deleted
@@ -553,6 +556,9 @@ namespace audioConverter.Services
                             p.RetiesTime = retries;
                             ListAudioObjInfo[index].OutputRecordFileUrl = ListAudioObjInfo[index].OutputStreamUrl.Replace(".m3u8", ".mp3");
                             ListAudioObjInfo[index]._processesInfo.Add(p);
+                            
+                            Log.Information($"PID = {p.Process.Id}");
+
                             var dontCare = RunProcessUntilTimeout(ListAudioObjInfo[index], ListAudioObjInfo[index]._processesInfo[1]);       // dont care about await
                         }
                         else
@@ -651,8 +657,9 @@ namespace audioConverter.Services
                     // Cho nay co the co bug, vi du cung 1 link nhung nhieu output khac nhau
                     // Neu ma check url da ton tai thi chi co ouput dau tien dc convert lai, cac process sau
                     // 
-
-
+#if true
+                    doRestartStep = ListAudioObjInfo.Any(x => x.InputUrl.Equals(url)) ? 1 : 0;
+#else
                     for (var i = 0; i < ListAudioObjInfo.Count; i++)
                     {
                         doRestartStep++;
@@ -663,7 +670,7 @@ namespace audioConverter.Services
                             break;
                         }
                     }
-
+#endif
                     if (doRestartStep > 0 || ListAudioObjInfo.Count > 0)
                     {
                         for (int i = 0; i < ListRetryingUrls.Count; i++)

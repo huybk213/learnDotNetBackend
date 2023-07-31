@@ -32,6 +32,7 @@ namespace audioConverter.Controllers
             String Record = String.Empty;
             String StationName = String.Empty; 
             String Info = String.Empty;
+  
             OutputRadioStationConverter? tmp = null;
 
             if (!String.IsNullOrEmpty(stationName))
@@ -128,6 +129,12 @@ namespace audioConverter.Controllers
             if (!String.IsNullOrEmpty(stationName) && !String.IsNullOrEmpty(newName) && !newName.Equals(stationName))
             {
                 Log.Information($"Edit station {stationName} to {newName}");
+
+                if (newDescription == null) 
+                {
+                    newDescription = String.Empty;
+                }
+
                 ret = RadioTranscodeManager.UpdateStationNameAndDesc(stationName, newName, newDescription);
                 if (ret == DeleteTranscodeResult.StationNotExist)
                 {
@@ -163,7 +170,7 @@ namespace audioConverter.Controllers
         {
             DeleteTranscodeResult ret;
 
-            if (!String.IsNullOrEmpty(stationName))
+            if (!String.IsNullOrEmpty(stationName) && !String.IsNullOrEmpty(newUrl))
             {
                 Log.Information($"Edit station {stationName} URL to {newUrl}");
                 ret = RadioTranscodeManager.UpdateStationUrl(stationName, newUrl);
@@ -219,7 +226,6 @@ namespace audioConverter.Controllers
             }
             else
             {
-
                 AudioUrlConverter.ConvertUrlInfo newConvert = AudioUrlConverter.InsertRecord(url.InputUrl, false, 0);
                 if (newConvert.OutputStreamUrl == String.Empty)
                 {

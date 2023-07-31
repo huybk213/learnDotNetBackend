@@ -38,14 +38,6 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-//Log.Logger = new LoggerConfiguration()
-//        .MinimumLevel.Debug()
-//        .WriteTo.Console()
-//        .WriteTo.File("logs/myapp.txt", rollingInterval: RollingInterval.Day)
-//        .CreateLogger();
-
-
-
 var AppConfig = new ConfigurationBuilder().AddJsonFile("appsettings.Development.json").Build();
 var NginxPath = AppConfig.GetValue<string>("NginxFolderConfig:path");
 var url = AppConfig.GetValue<string>("NginxFolderConfig:prefixUrl");

@@ -37,12 +37,15 @@ namespace radioTranscodeManager.Services
                 StationDB.InitDataBase();
 
                 var outputRadioStationInfo = StationDB.GetAllItemsInDb();
-                foreach (var item in outputRadioStationInfo)
+                if (outputRadioStationInfo != null)
                 {
-                    if (!String.IsNullOrEmpty(item.InputUrl))
+                    foreach (var item in outputRadioStationInfo)
                     {
-                        Log.Information($"Convert {item.StationName} -> {item.InputUrl} at startup");
-                        AudioUrlConverter.InsertRecord(item.InputUrl, false, 0);
+                        if (!String.IsNullOrEmpty(item.InputUrl))
+                        {
+                            Log.Information($"Convert {item.StationName} -> {item.InputUrl} at startup");
+                            AudioUrlConverter.InsertRecord(item.InputUrl, false, 0);
+                        }
                     }
                 }
             }
@@ -115,8 +118,11 @@ namespace radioTranscodeManager.Services
 
             if (StationDB.RemoveItemInDb(stationName))
             {
-                Log.Information($"Station {stationName} removed, do terminate url {tmp.InputUrl}");
-                AudioUrlConverter.TerminateRecord(tmp.InputUrl);
+                if (tmp != null)
+                {
+                    Log.Information($"Station {stationName} removed, do terminate url {tmp.InputUrl}");
+                    AudioUrlConverter.TerminateRecord(tmp.InputUrl);
+                }
                 ret = DeleteTranscodeResult.Ok;
             }
             else

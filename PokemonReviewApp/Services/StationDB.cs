@@ -107,7 +107,7 @@ namespace audioConverter.Services
                 var output = cnn.Query<OutputRadioStationConverter>(cmd, new DynamicParameters());
                 return output.ToList();
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 Log.Warning($"Get all item in db failed {ex.Message}");
                 return null;
