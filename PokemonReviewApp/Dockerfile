@@ -11,10 +11,11 @@ RUN apt-get -y upgrade
 RUN apt-get install -y ffmpeg
 
 ENV ASPNETCORE_ENVIRONMENT=Development
-#ENV ASPNETCORE_URLS http://*:80;https://*:443
-ENV ASPNETCORE_URLS http://*:80
+ENV ASPNETCORE_URLS http://*:80;https://*:443
+#ENV ASPNETCORE_URLS http://*:80
 
 ENV FFMPEG_PATH="/usr/bin/ffmpeg"
+ENV DB_PATH="/home/ubuntu/"
 
 FROM mcr.microsoft.com/dotnet/sdk:6.0 AS build
 WORKDIR /src

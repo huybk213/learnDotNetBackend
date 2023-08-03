@@ -130,14 +130,17 @@ namespace audioConverter.Services
 
                 if (p.HasExited == false)
                 {
-                    Log.Information($"Kill PID {p.Id} -> FAILED");
+                    Log.Warning($"Kill PID {p.Id} -> FAILED, process timeout");
                 }
                 else
                 {
                     Log.Information($"Kill PID {p.Id} -> OK");
                 }
             }
-            catch (Exception ex) { Log.Information(ex.ToString()); }
+            catch (Exception ex) 
+            { 
+                Log.Warning($"Close process failed {ex.Message}"); 
+            }
         }
 
         //Delete audio .*ts trash file, keep .mp3 file
@@ -155,7 +158,7 @@ namespace audioConverter.Services
                 }
                 catch (Exception e)
                 {
-                    Log.Warning(e.ToString());
+                    Log.Warning($"Delete folder failed {e.Message}");
                 }
             }
         }
@@ -238,7 +241,7 @@ namespace audioConverter.Services
                         }
                         catch (Exception ex)
                         {
-                            Log.Information(ex.ToString());
+                            Log.Warning($"Capture stdout failed {ex.Message}");
                         }
 
                         if (AUTO_RESTART_PROCESS_WHEN_EXIT && p.ConvertTimeout > 0 && p.RetiesTime > 0)
@@ -254,7 +257,7 @@ namespace audioConverter.Services
                             }
                             catch (Exception e)
                             {
-                                Log.Information(e.Message);
+                                Log.Warning($"Remove obj failed {e.Message}");
                             }
                         }
                         break;
@@ -279,13 +282,13 @@ namespace audioConverter.Services
                     // Remove .ts file
                     Log.Information($"Clean folder -> {p.TargetTrashPathWillBeClean}");
                     await DeleteAudioTrashFilesAsync(p.TargetTrashPathWillBeClean);
-                    Log.Information("Done");
+                    Log.Debug("Done");
                 }
                 RemoveProcessFromList(obj, p);
             }
             catch (Exception ex)
             {
-                Log.Information("Close subprocess failed {0}", ex.ToString());
+                Log.Warning("Close subprocess failed {0}", ex.Message);
             }
         }
 
@@ -300,9 +303,6 @@ namespace audioConverter.Services
 
         public static JArray GetAllRecordUrl()
         {
-            // var json = JObject.Parse("{}");
-
-            // List<string> records = new List<string>();
             var jArray = new JArray();
 
             lock (_ensureThreadSafe)
@@ -316,12 +316,12 @@ namespace audioConverter.Services
                     ));
                 }
             }
-            // json.Add("url", jArray);
+
             return jArray;
         }
 
         //Sample ffmpeg -y -i http://stream.bytech.vn:3000/860262051441926 -acodec libmp3lame  -flush_packets 1 1783043925/info.mp3
-        private static string BuildFffmpegStreamCmd(string inputUrl, string destinationFolder, FfmpegFileOutput type)
+        private static string BuildFffmpegStreamParams(string inputUrl, string destinationFolder, FfmpegFileOutput type)
         {
             string ffmpegCmd = String.Empty;
             switch (type)
@@ -333,7 +333,7 @@ namespace audioConverter.Services
                 case FfmpegFileOutput.Mp3:
                 default:
                     ffmpegCmd = string.Format("-y -hide_banner -i {0} -loglevel error -acodec libmp3lame -flush_packets 1 {1}{2}",
-                                                       inputUrl, destinationFolder, MP3_FILE_NAME);
+                                                inputUrl, destinationFolder, MP3_FILE_NAME);
                     break;
             }
             return ffmpegCmd;
@@ -365,10 +365,10 @@ namespace audioConverter.Services
         {
             if (!String.IsNullOrEmpty(msg))
             {
-                Log.Information("FF STDERR {0} -> {1}", sender.ToString(), msg);
+                Log.Warning("FF STDERR {0} -> {1}", sender.ToString(), msg);
                 if (msg.Contains("Server returned 404 Not Found"))
                 {
-                    Log.Information("FFMEG -> Link 404");
+                    Log.Warning("FFMPEG -> Link 404");
                 }
             }
         }
@@ -407,7 +407,7 @@ namespace audioConverter.Services
                 System.IO.Directory.CreateDirectory(tmp.LocalFolderRecorded);
 
                 // Create ffmpeg process : m3u8
-                string ffmpegCmd = BuildFffmpegStreamCmd(inputUrl, tmp.LocalFolderRecorded, FfmpegFileOutput.M3u8);
+                string ffmpegCmd = BuildFffmpegStreamParams(inputUrl, tmp.LocalFolderRecorded, FfmpegFileOutput.M3u8);
                 Log.Information("FFMPEG -> M3U8 cmd = ffmpeg {0}", ffmpegCmd);
 
                 try
@@ -444,12 +444,12 @@ namespace audioConverter.Services
                 }
                 catch (Exception ex)
                 {
-                    Log.Information($"FFMPEG process failed {ex.Message}");
+                    Log.Warning($"FFMPEG process failed {ex.Message}");
                 }
 
                 if (needRecordToFile)
                 {
-                    ffmpegCmd = BuildFffmpegStreamCmd(inputUrl, tmp.LocalFolderRecorded, FfmpegFileOutput.Mp3);
+                    ffmpegCmd = BuildFffmpegStreamParams(inputUrl, tmp.LocalFolderRecorded, FfmpegFileOutput.Mp3);
 
                     SingleProcessInfo p = new SingleProcessInfo();
                     ProcessStartInfo processInfo = new ProcessStartInfo();
@@ -511,7 +511,7 @@ namespace audioConverter.Services
                         }
                         catch (Exception e)
                         {
-                            Log.Information(e.ToString());
+                            Log.Warning($"Close subprocess failed {e.Message}");
                         }
                     }
                     result.Result = "Create process failed";
@@ -533,7 +533,7 @@ namespace audioConverter.Services
                     if (ListAudioObjInfo[index]._processesInfo.Count == 1)
                     {
                         Log.Information($"Create new ffmpeg service {ListAudioObjInfo[index].InputUrl}");
-                        var ffmpegCmd = BuildFffmpegStreamCmd(inputUrl, ListAudioObjInfo[index].LocalFolderRecorded, FfmpegFileOutput.Mp3);
+                        var ffmpegCmd = BuildFffmpegStreamParams(inputUrl, ListAudioObjInfo[index].LocalFolderRecorded, FfmpegFileOutput.Mp3);
 
                         SingleProcessInfo p = new SingleProcessInfo();
                         ProcessStartInfo processInfo = new ProcessStartInfo();
@@ -554,16 +554,17 @@ namespace audioConverter.Services
                             p.TargetTrashPathWillBeClean = String.Empty;       // We wont delete mp3 file, only .ts files will be deleted
                             p.RecordToFile = true;
                             p.RetiesTime = retries;
+                            // File record co dinh dang .mp3, file stream co dinh dang .m3u8 va .TS
                             ListAudioObjInfo[index].OutputRecordFileUrl = ListAudioObjInfo[index].OutputStreamUrl.Replace(".m3u8", ".mp3");
                             ListAudioObjInfo[index]._processesInfo.Add(p);
                             
                             Log.Information($"PID = {p.Process.Id}");
-
-                            var dontCare = RunProcessUntilTimeout(ListAudioObjInfo[index], ListAudioObjInfo[index]._processesInfo[1]);       // dont care about await
+                            // dont care about await
+                            var dontCare = RunProcessUntilTimeout(ListAudioObjInfo[index], ListAudioObjInfo[index]._processesInfo[1]);      
                         }
                         else
                         {
-                            Log.Warning("Create new process failed");
+                            Log.Warning("Create new process failed, system return NULL process");
                         }
                     }
 
@@ -608,7 +609,7 @@ namespace audioConverter.Services
                                 }
                                 catch (Exception e)
                                 {
-                                    Log.Information($"Send terminate signal failed {e.ToString()}");
+                                    Log.Warning($"Send terminate signal failed {e.Message}");
                                     ret = DeleteRecordResult.InternalError;
                                 }
                             }

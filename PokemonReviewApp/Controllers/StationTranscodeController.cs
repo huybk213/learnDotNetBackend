@@ -27,7 +27,7 @@ namespace audioConverter.Controllers
         [HttpGet]
         public IActionResult GetRadioTranscodeUrlByName(string stationName)
         {
-            DeleteTranscodeResult ret;
+            DeleteTranscodeResult ret = DeleteTranscodeResult.InternalError;
             String Message = String.Empty;
             String Record = String.Empty;
             String StationName = String.Empty; 

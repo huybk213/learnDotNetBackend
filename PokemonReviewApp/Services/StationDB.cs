@@ -22,7 +22,7 @@ namespace audioConverter.Services
         private static StationDB ?_db = null;
         private static string _dbPath = String.Empty;
         private static string _dataSourceToDbPath = String.Empty;
-        private const string DB_PATH = "./radio_station.db";
+        private const string DB_FILE_NAME = "radio_station.db";
         private static List<OutputRadioStationConverter> _cachedListStation = new List<OutputRadioStationConverter>();
         private static object _ensureThreadSafe = new Object();
         private const string DB_TABLE_NAME = "StationRecord";
@@ -44,15 +44,17 @@ namespace audioConverter.Services
             if (_db == null)
             {
                 _db = new StationDB();
-                _dbPath = DB_PATH;  /*System.IO.Path.Join(path, "radio_station2.db");*/
+                _dbPath += DB_FILE_NAME;  /*System.IO.Path.Join(path, "radio_station2.db");*/
                 _dataSourceToDbPath = "Data Source=" + _dbPath;
                 Log.Information($"DB path = {_dbPath}");
+                Log.Information($"DB connection string = {_dataSourceToDbPath}");
             }
             return new SQLiteConnection(_dataSourceToDbPath);
         }
 
-        public static void InitDataBase()
+        public static void InitDataBase(string dbPath)
         {
+            _dbPath = dbPath;
             using (var cnn = SimpleDbConnection())
             {
                 if (cnn != null && !File.Exists(_dbPath))
@@ -74,7 +76,7 @@ namespace audioConverter.Services
                     }
                     catch (Exception ex) 
                     {
-                        Log.Warning($"Create db failed {ex.Message}");
+                        Log.Warning($"Create db failed : {ex.Message}");
                     }
                 }   
                 else if (File.Exists(_dbPath) && cnn == null)

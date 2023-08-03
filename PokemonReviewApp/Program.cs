@@ -42,6 +42,7 @@ var AppConfig = new ConfigurationBuilder().AddJsonFile("appsettings.Development.
 var NginxPath = AppConfig.GetValue<string>("NginxFolderConfig:path");
 var url = AppConfig.GetValue<string>("NginxFolderConfig:prefixUrl");
 var ffmpegPath = Environment.GetEnvironmentVariable("FFMPEG_PATH");
+var dbPath = Environment.GetEnvironmentVariable("DB_PATH");
 AudioUrlConverter.SetNginxPath(NginxPath, url);
 //app.Logger.LogInformation($"NginxPath = {NginxPath}");
 
@@ -58,10 +59,10 @@ Log.Logger = new LoggerConfiguration()
                                                                                                         rollingInterval: RollingInterval.Day))
     .CreateLogger();
 
-if (ffmpegPath != null)
+if (ffmpegPath != null && dbPath != null)
 {
     AudioUrlConverter.SetFFmpegBinaryPath(ffmpegPath);
-    RadioTranscodeManager.StartService();
+    RadioTranscodeManager.StartService(dbPath);
 
     //Create audio dir
     // If directory does not exist, create it

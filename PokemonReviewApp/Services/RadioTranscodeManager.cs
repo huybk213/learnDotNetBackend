@@ -28,13 +28,13 @@ namespace radioTranscodeManager.Services
             InternalError,
             Ok
         }
-        public static void StartService()
+        public static void StartService(string dbPath)
         {
             if (_radioTranscode == null)
             {
                 _radioTranscode = new RadioTranscodeManager();
                 Log.Information("Create new station manager");
-                StationDB.InitDataBase();
+                StationDB.InitDataBase(dbPath);
 
                 var outputRadioStationInfo = StationDB.GetAllItemsInDb();
                 if (outputRadioStationInfo != null)
